@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.slugyzeon"
-version = "1.3.2"
+version = "1.3.3"
 
 lavalinkPlugin {
     name = "slugyzeon-plugin"
