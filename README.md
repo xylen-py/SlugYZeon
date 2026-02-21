@@ -1,6 +1,6 @@
 # SlugYZeoN Plugin
 
-A custom Lavalink plugin providing additional audio sources.
+A custom Lavalink plugin providing additional audio sources for your music bot.
 
 ## Sources
 
@@ -18,7 +18,7 @@ Add to your Lavalink `application.yml`:
 ```yaml
 lavalink:
     plugins:
-        - dependency: com.github.xylen-py:SlugYZeon:1.3.2
+        - dependency: com.github.xylen-py.SlugYZeon:slugyzeon-plugin:v1.3.2
           repository: https://jitpack.io
           snapshot: false
 ```
@@ -43,10 +43,12 @@ plugins:
       maxSearchResults: 10
 ```
 
+> **Note:** Last.fm requires a valid API key to be enabled. Get one at [last.fm/api](https://www.last.fm/api/account/create).
+
 ## Build
 
 ```bash
 ./gradlew clean build
 ```
 
-The plugin JAR will be in `build/libs/`.
+The plugin JAR will be in `plugin/build/libs/`.
