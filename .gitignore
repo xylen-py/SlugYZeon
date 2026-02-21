@@ -2,7 +2,6 @@
 build/
 bin/
 *.class
-*.jar
 *.war
 *.ear
 *.iml
