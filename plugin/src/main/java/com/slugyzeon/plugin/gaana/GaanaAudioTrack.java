@@ -44,10 +44,19 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
             throw new RuntimeException("No playable stream found for: " + trackInfo.title);
         }
 
-        GaanaSeekableStream seekableStream = new GaanaSeekableStream(audioData);
-        MpegTsElementaryInputStream tsStream = new MpegTsElementaryInputStream(seekableStream,
+        GaanaSeekableStream tsSeekable = new GaanaSeekableStream(audioData);
+        MpegTsElementaryInputStream tsStream = new MpegTsElementaryInputStream(tsSeekable,
                 MpegTsElementaryInputStream.ADTS_ELEMENTARY_STREAM);
-        processDelegate(new AdtsAudioTrack(trackInfo, tsStream), executor);
+
+        ByteArrayOutputStream adtsBuffer = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int read;
+        while ((read = tsStream.read(buf)) != -1) {
+            adtsBuffer.write(buf, 0, read);
+        }
+
+        GaanaSeekableStream adtsSeekable = new GaanaSeekableStream(adtsBuffer.toByteArray());
+        processDelegate(new AdtsAudioTrack(trackInfo, adtsSeekable), executor);
     }
 
     private byte[] downloadAudio(JsonNode streamData) throws Exception {
