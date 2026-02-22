@@ -66,16 +66,34 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
     }
 
     private byte[] downloadSegments(HttpClient client, JsonNode segments) throws Exception {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int count = segments.size();
+        @SuppressWarnings("unchecked")
+        java.util.concurrent.CompletableFuture<byte[]>[] futures = new java.util.concurrent.CompletableFuture[count];
 
-        for (JsonNode segment : segments) {
-            String segUrl = segment.get("url").asText();
-            byte[] data = downloadUrl(client, segUrl);
-            if (data != null) {
+        for (int i = 0; i < count; i++) {
+            String segUrl = segments.get(i).get("url").asText();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(segUrl))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .header("Referer", "https://gaana.com/")
+                    .header("Origin", "https://gaana.com")
+                    .timeout(Duration.ofSeconds(15))
+                    .GET()
+                    .build();
+
+            futures[i] = client.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
+                    .thenApply(r -> r.statusCode() == 200 ? r.body() : new byte[0]);
+        }
+
+        java.util.concurrent.CompletableFuture.allOf(futures).join();
+
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        for (var future : futures) {
+            byte[] data = future.get();
+            if (data != null && data.length > 0) {
                 buffer.write(data);
             }
         }
-
         return buffer.toByteArray();
     }
 
