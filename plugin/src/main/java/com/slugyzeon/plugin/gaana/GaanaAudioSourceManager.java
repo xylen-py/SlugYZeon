@@ -36,6 +36,13 @@ public class GaanaAudioSourceManager implements AudioSourceManager {
         this.config = config;
         this.apiHandler = new GaanaApiHandler(config);
         this.httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
+        this.httpInterfaceManager.configureBuilder(
+                builder -> builder.addInterceptorFirst((org.apache.http.HttpRequestInterceptor) (request, context) -> {
+                    request.setHeader("Referer", "https://gaana.com/");
+                    request.setHeader("Origin", "https://gaana.com");
+                    request.setHeader("User-Agent",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
+                }));
     }
 
     @Override
