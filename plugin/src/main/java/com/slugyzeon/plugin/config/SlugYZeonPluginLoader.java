@@ -24,17 +24,17 @@ public class SlugYZeonPluginLoader implements AudioPlayerManagerConfiguration {
     @Override
     public AudioPlayerManager configure(AudioPlayerManager manager) {
         if (config.getGaana().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Gaana audio source manager");
+            log.info("[SlugYZeoN] Registering Gaana audio source manager...");
             manager.registerSourceManager(new GaanaAudioSourceManager(config.getGaana()));
         }
 
         if (config.getAmazonmusic().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Amazon Music audio source manager");
+            log.info("[SlugYZeoN] Registering Amazon Music audio source manager...");
             manager.registerSourceManager(new AmazonMusicAudioSourceManager(config.getAmazonmusic()));
         }
 
         if (config.getInstagram().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Instagram audio source manager");
+            log.info("[SlugYZeoN] Registering Instagram audio source manager...");
             manager.registerSourceManager(new InstagramAudioSourceManager(config.getInstagram()));
         }
 
@@ -43,7 +43,7 @@ public class SlugYZeonPluginLoader implements AudioPlayerManagerConfiguration {
             if (apiKey == null || apiKey.isEmpty()) {
                 log.warn("[SlugYZeoN] Last.fm source disabled: no API key provided");
             } else {
-                log.info("[SlugYZeoN] Registering Last.fm audio source manager");
+                log.info("[SlugYZeoN] Registering Last.fm audio source manager...");
                 manager.registerSourceManager(new LastFmAudioSourceManager(config.getLastfm()));
             }
         }
