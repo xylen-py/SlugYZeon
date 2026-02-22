@@ -181,8 +181,26 @@ public class AmazonMusicApiHandler {
                     }
                     if (duration == 0L) {
                         String isoDur = item.path("duration").asText(null);
-                        if (isoDur != null)
-                            duration = parseISO8601Duration(isoDur);
+                        if (isoDur != null) {
+                            if (isoDur.contains(":")) duration = parseColonDuration(isoDur);
+                            else duration = parseISO8601Duration(isoDur);
+                        }
+                    }
+                    if (duration == 0L && item.has("durationInSeconds")) {
+                        duration = item.path("durationInSeconds").asLong(0) * 1000L;
+                    }
+                    if (duration == 0L) {
+                        for (String field : new String[]{"secondaryText2", "tertiaryText1", "tertiaryText2", "quaternaryText"}) {
+                            String val = getText(item.path(field), null);
+                            if (val != null && val.contains(":")) {
+                                duration = parseColonDuration(val);
+                                if (duration > 0) break;
+                            }
+                        }
+                    }
+                    if (duration == 0L) {
+                        log.info("[AmazonMusic] Duration=0 for '{}', item: {}", trackInfo.get("title"),
+                                item.toString().substring(0, Math.min(item.toString().length(), 800)));
                     }
                     trackInfo.put("length", duration);
                     tracks.add(trackInfo);
