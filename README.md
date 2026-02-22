@@ -30,7 +30,7 @@ plugins:
   slugyzeon:
     gaana:
       enabled: true
-      apiUrl: "https://gaana.1lucas1apk.fun/api"
+      apiUrl: "https://gaana-plugin-api.vercel.app/api"
       streamQuality: "high"
     amazonmusic:
       enabled: true

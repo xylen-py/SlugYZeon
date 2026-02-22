@@ -46,41 +46,92 @@ public class SlugYZeonConfig {
 
     public static class GaanaConfig {
         private boolean enabled = true;
-        private String apiUrl = "https://gaana.1lucas1apk.fun/api";
+        private String apiUrl = "https://gaana-plugin-api.vercel.app/api";
         private String streamQuality = "high";
         private int playlistLoadLimit = 50;
         private int albumLoadLimit = 50;
         private int artistLoadLimit = 50;
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-        public String getApiUrl() { return apiUrl; }
-        public void setApiUrl(String apiUrl) { this.apiUrl = apiUrl; }
-        public String getStreamQuality() { return streamQuality; }
-        public void setStreamQuality(String streamQuality) { this.streamQuality = streamQuality; }
-        public int getPlaylistLoadLimit() { return playlistLoadLimit; }
-        public void setPlaylistLoadLimit(int playlistLoadLimit) { this.playlistLoadLimit = playlistLoadLimit; }
-        public int getAlbumLoadLimit() { return albumLoadLimit; }
-        public void setAlbumLoadLimit(int albumLoadLimit) { this.albumLoadLimit = albumLoadLimit; }
-        public int getArtistLoadLimit() { return artistLoadLimit; }
-        public void setArtistLoadLimit(int artistLoadLimit) { this.artistLoadLimit = artistLoadLimit; }
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getApiUrl() {
+            return apiUrl;
+        }
+
+        public void setApiUrl(String apiUrl) {
+            this.apiUrl = apiUrl;
+        }
+
+        public String getStreamQuality() {
+            return streamQuality;
+        }
+
+        public void setStreamQuality(String streamQuality) {
+            this.streamQuality = streamQuality;
+        }
+
+        public int getPlaylistLoadLimit() {
+            return playlistLoadLimit;
+        }
+
+        public void setPlaylistLoadLimit(int playlistLoadLimit) {
+            this.playlistLoadLimit = playlistLoadLimit;
+        }
+
+        public int getAlbumLoadLimit() {
+            return albumLoadLimit;
+        }
+
+        public void setAlbumLoadLimit(int albumLoadLimit) {
+            this.albumLoadLimit = albumLoadLimit;
+        }
+
+        public int getArtistLoadLimit() {
+            return artistLoadLimit;
+        }
+
+        public void setArtistLoadLimit(int artistLoadLimit) {
+            this.artistLoadLimit = artistLoadLimit;
+        }
     }
 
     public static class AmazonMusicConfig {
         private boolean enabled = true;
         private String countryCode = "IN";
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-        public String getCountryCode() { return countryCode; }
-        public void setCountryCode(String countryCode) { this.countryCode = countryCode; }
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getCountryCode() {
+            return countryCode;
+        }
+
+        public void setCountryCode(String countryCode) {
+            this.countryCode = countryCode;
+        }
     }
 
     public static class InstagramConfig {
         private boolean enabled = true;
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     public static class LastFmConfig {
@@ -88,11 +139,28 @@ public class SlugYZeonConfig {
         private String apiKey = "";
         private int maxSearchResults = 10;
 
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-        public String getApiKey() { return apiKey; }
-        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
-        public int getMaxSearchResults() { return maxSearchResults; }
-        public void setMaxSearchResults(int maxSearchResults) { this.maxSearchResults = maxSearchResults; }
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public int getMaxSearchResults() {
+            return maxSearchResults;
+        }
+
+        public void setMaxSearchResults(int maxSearchResults) {
+            this.maxSearchResults = maxSearchResults;
+        }
     }
 }
