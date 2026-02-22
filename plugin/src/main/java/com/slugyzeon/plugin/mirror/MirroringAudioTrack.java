@@ -8,6 +8,7 @@ import com.sedmelluq.discord.lavaplayer.track.playback.LocalAudioTrackExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Field;
 import java.util.concurrent.CompletableFuture;
 
 public abstract class MirroringAudioTrack extends DelegatedAudioTrack {
@@ -35,6 +36,11 @@ public abstract class MirroringAudioTrack extends DelegatedAudioTrack {
 
         if (track instanceof InternalAudioTrack) {
             var internalTrack = (InternalAudioTrack) track;
+
+            if (trackInfo.length == 0 && internalTrack.getDuration() > 0) {
+                updateDuration(internalTrack.getDuration());
+            }
+
             log.debug("Loaded mirror from {} {}({})", internalTrack.getSourceManager().getSourceName(),
                     internalTrack.getInfo().title, internalTrack.getInfo().uri);
             processDelegate(internalTrack, executor);
@@ -42,6 +48,16 @@ public abstract class MirroringAudioTrack extends DelegatedAudioTrack {
         }
 
         throw new TrackNotFoundException("No mirror found for: " + trackInfo.title);
+    }
+
+    private void updateDuration(long duration) {
+        try {
+            Field lengthField = AudioTrackInfo.class.getDeclaredField("length");
+            lengthField.setAccessible(true);
+            lengthField.setLong(this.trackInfo, duration);
+        } catch (Exception e) {
+            log.debug("Could not update track duration: {}", e.getMessage());
+        }
     }
 
     @Override

@@ -198,10 +198,6 @@ public class AmazonMusicApiHandler {
                             }
                         }
                     }
-                    if (duration == 0L) {
-                        log.info("[AmazonMusic] Duration=0 for '{}', item: {}", trackInfo.get("title"),
-                                item.toString().substring(0, Math.min(item.toString().length(), 800)));
-                    }
                     trackInfo.put("length", duration);
                     tracks.add(trackInfo);
                 }
