@@ -2,12 +2,10 @@ package com.slugyzeon.plugin.gaana;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
-import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
-import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterfaceManager;
 import com.sedmelluq.discord.lavaplayer.track.*;
 import com.slugyzeon.plugin.config.SlugYZeonConfig;
+import com.slugyzeon.plugin.mirror.DefaultMirroringAudioTrackResolver;
+import com.slugyzeon.plugin.mirror.MirroringAudioSourceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,7 +17,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class GaanaAudioSourceManager implements AudioSourceManager {
+public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(GaanaAudioSourceManager.class);
     private static final String SOURCE_NAME = "gaana";
@@ -29,29 +27,22 @@ public class GaanaAudioSourceManager implements AudioSourceManager {
 
     private final GaanaApiHandler apiHandler;
     private final SlugYZeonConfig.GaanaConfig config;
-    private final HttpInterfaceManager httpInterfaceManager;
     private volatile AudioPlayerManager playerManager;
 
     public GaanaAudioSourceManager(SlugYZeonConfig.GaanaConfig config) {
+        super(unused -> null, new DefaultMirroringAudioTrackResolver(null));
         this.config = config;
         this.apiHandler = new GaanaApiHandler(config);
-        this.httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
-        this.httpInterfaceManager.configureBuilder(
-                builder -> builder.addInterceptorFirst((org.apache.http.HttpRequestInterceptor) (request, context) -> {
-                    request.setHeader("Referer", "https://gaana.com/");
-                    request.setHeader("Origin", "https://gaana.com");
-                    request.setHeader("User-Agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36");
-                }));
+    }
+
+    @Override
+    public AudioPlayerManager getAudioPlayerManager() {
+        return playerManager;
     }
 
     @Override
     public String getSourceName() {
         return SOURCE_NAME;
-    }
-
-    public AudioPlayerManager getPlayerManager() {
-        return playerManager;
     }
 
     @Override
@@ -249,10 +240,6 @@ public class GaanaAudioSourceManager implements AudioSourceManager {
         return config;
     }
 
-    public HttpInterface getHttpInterface() {
-        return httpInterfaceManager.getInterface();
-    }
-
     @Override
     public boolean isTrackEncodable(AudioTrack track) {
         return true;
@@ -265,13 +252,5 @@ public class GaanaAudioSourceManager implements AudioSourceManager {
     @Override
     public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
         return new GaanaAudioTrack(trackInfo, this);
-    }
-
-    @Override
-    public void shutdown() {
-        try {
-            httpInterfaceManager.close();
-        } catch (Exception ignored) {
-        }
     }
 }

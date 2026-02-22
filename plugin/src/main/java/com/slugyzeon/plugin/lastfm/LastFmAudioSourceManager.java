@@ -1,9 +1,10 @@
 package com.slugyzeon.plugin.lastfm;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.track.*;
 import com.slugyzeon.plugin.config.SlugYZeonConfig;
+import com.slugyzeon.plugin.mirror.DefaultMirroringAudioTrackResolver;
+import com.slugyzeon.plugin.mirror.MirroringAudioSourceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-public class LastFmAudioSourceManager implements AudioSourceManager {
+public class LastFmAudioSourceManager extends MirroringAudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(LastFmAudioSourceManager.class);
     private static final String SOURCE_NAME = "lastfm";
@@ -27,17 +28,19 @@ public class LastFmAudioSourceManager implements AudioSourceManager {
     private volatile AudioPlayerManager playerManager;
 
     public LastFmAudioSourceManager(SlugYZeonConfig.LastFmConfig config) {
+        super(unused -> null, new DefaultMirroringAudioTrackResolver(null));
         this.config = config;
         this.apiHandler = new LastFmApiHandler(config.getApiKey(), config.getMaxSearchResults());
     }
 
     @Override
-    public String getSourceName() {
-        return SOURCE_NAME;
+    public AudioPlayerManager getAudioPlayerManager() {
+        return playerManager;
     }
 
-    public AudioPlayerManager getPlayerManager() {
-        return playerManager;
+    @Override
+    public String getSourceName() {
+        return SOURCE_NAME;
     }
 
     @Override
@@ -167,9 +170,5 @@ public class LastFmAudioSourceManager implements AudioSourceManager {
     @Override
     public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
         return new LastFmAudioTrack(trackInfo, this);
-    }
-
-    @Override
-    public void shutdown() {
     }
 }

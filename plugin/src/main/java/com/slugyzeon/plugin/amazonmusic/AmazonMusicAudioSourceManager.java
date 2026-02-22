@@ -1,9 +1,10 @@
 package com.slugyzeon.plugin.amazonmusic;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.track.*;
 import com.slugyzeon.plugin.config.SlugYZeonConfig;
+import com.slugyzeon.plugin.mirror.DefaultMirroringAudioTrackResolver;
+import com.slugyzeon.plugin.mirror.MirroringAudioSourceManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,7 +17,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class AmazonMusicAudioSourceManager implements AudioSourceManager {
+public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(AmazonMusicAudioSourceManager.class);
     private static final String SOURCE_NAME = "amazonmusic";
@@ -34,17 +35,19 @@ public class AmazonMusicAudioSourceManager implements AudioSourceManager {
     private volatile AudioPlayerManager playerManager;
 
     public AmazonMusicAudioSourceManager(SlugYZeonConfig.AmazonMusicConfig config) {
+        super(unused -> null, new DefaultMirroringAudioTrackResolver(null));
         this.config = config;
         this.apiHandler = new AmazonMusicApiHandler(config);
     }
 
     @Override
-    public String getSourceName() {
-        return SOURCE_NAME;
+    public AudioPlayerManager getAudioPlayerManager() {
+        return playerManager;
     }
 
-    public AudioPlayerManager getPlayerManager() {
-        return playerManager;
+    @Override
+    public String getSourceName() {
+        return SOURCE_NAME;
     }
 
     @Override
@@ -205,9 +208,5 @@ public class AmazonMusicAudioSourceManager implements AudioSourceManager {
     @Override
     public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
         return new AmazonMusicAudioTrack(trackInfo, this);
-    }
-
-    @Override
-    public void shutdown() {
     }
 }
