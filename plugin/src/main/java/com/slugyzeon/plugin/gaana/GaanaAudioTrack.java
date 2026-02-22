@@ -1,7 +1,8 @@
 package com.slugyzeon.plugin.gaana;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
+import com.sedmelluq.discord.lavaplayer.container.adts.AdtsAudioTrack;
+import com.sedmelluq.discord.lavaplayer.container.mpegts.MpegTsElementaryInputStream;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.io.SeekableInputStream;
 import com.sedmelluq.discord.lavaplayer.track.*;
@@ -17,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class GaanaAudioTrack extends DelegatedAudioTrack {
 
@@ -42,8 +44,10 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
             throw new RuntimeException("No playable stream found for: " + trackInfo.title);
         }
 
-        GaanaSeekableStream stream = new GaanaSeekableStream(audioData);
-        processDelegate(new MpegAudioTrack(trackInfo, stream), executor);
+        GaanaSeekableStream seekableStream = new GaanaSeekableStream(audioData);
+        MpegTsElementaryInputStream tsStream = new MpegTsElementaryInputStream(seekableStream,
+                MpegTsElementaryInputStream.ADTS_ELEMENTARY_STREAM);
+        processDelegate(new AdtsAudioTrack(trackInfo, tsStream), executor);
     }
 
     private byte[] downloadAudio(JsonNode streamData) throws Exception {
@@ -65,10 +69,10 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
         return null;
     }
 
+    @SuppressWarnings("unchecked")
     private byte[] downloadSegments(HttpClient client, JsonNode segments) throws Exception {
         int count = segments.size();
-        @SuppressWarnings("unchecked")
-        java.util.concurrent.CompletableFuture<byte[]>[] futures = new java.util.concurrent.CompletableFuture[count];
+        CompletableFuture<byte[]>[] futures = new CompletableFuture[count];
 
         for (int i = 0; i < count; i++) {
             String segUrl = segments.get(i).get("url").asText();
@@ -85,7 +89,7 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
                     .thenApply(r -> r.statusCode() == 200 ? r.body() : new byte[0]);
         }
 
-        java.util.concurrent.CompletableFuture.allOf(futures).join();
+        CompletableFuture.allOf(futures).join();
 
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         for (var future : futures) {
