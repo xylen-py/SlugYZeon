@@ -3,12 +3,20 @@ package com.slugyzeon.plugin.gaana;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
-import com.sedmelluq.discord.lavaplayer.tools.io.PersistentHttpStream;
+import com.sedmelluq.discord.lavaplayer.tools.io.SeekableInputStream;
 import com.sedmelluq.discord.lavaplayer.track.*;
+import com.sedmelluq.discord.lavaplayer.track.info.AudioTrackInfoProvider;
 import com.sedmelluq.discord.lavaplayer.track.playback.LocalAudioTrackExecutor;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 
 public class GaanaAudioTrack extends DelegatedAudioTrack {
 
@@ -29,19 +37,63 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
             throw new RuntimeException("No stream data available for: " + trackInfo.title);
         }
 
-        String streamUrl = resolveStreamUrl(streamData);
-        if (streamUrl == null || streamUrl.isEmpty()) {
+        byte[] audioData = downloadAudio(streamData);
+        if (audioData == null || audioData.length == 0) {
             throw new RuntimeException("No playable stream found for: " + trackInfo.title);
         }
 
-        try (HttpInterface httpInterface = sourceManager.getHttpInterface()) {
-            try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), null)) {
-                processDelegate(new MpegAudioTrack(trackInfo, stream), executor);
-            }
-        }
+        GaanaSeekableStream stream = new GaanaSeekableStream(audioData);
+        processDelegate(new MpegAudioTrack(trackInfo, stream), executor);
     }
 
-    private String resolveStreamUrl(JsonNode streamData) {
+    private byte[] downloadAudio(JsonNode streamData) throws Exception {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+
+        if (streamData.has("segments") && streamData.get("segments").isArray()
+                && streamData.get("segments").size() > 0) {
+            return downloadSegments(client, streamData.get("segments"));
+        }
+
+        String directUrl = resolveDirectUrl(streamData);
+        if (directUrl != null) {
+            return downloadUrl(client, directUrl);
+        }
+
+        return null;
+    }
+
+    private byte[] downloadSegments(HttpClient client, JsonNode segments) throws Exception {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+
+        for (JsonNode segment : segments) {
+            String segUrl = segment.get("url").asText();
+            byte[] data = downloadUrl(client, segUrl);
+            if (data != null) {
+                buffer.write(data);
+            }
+        }
+
+        return buffer.toByteArray();
+    }
+
+    private byte[] downloadUrl(HttpClient client, String url) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .header("Referer", "https://gaana.com/")
+                .header("Origin", "https://gaana.com")
+                .timeout(Duration.ofSeconds(15))
+                .GET()
+                .build();
+
+        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        return response.statusCode() == 200 ? response.body() : null;
+    }
+
+    private String resolveDirectUrl(JsonNode streamData) {
         String[] fields = { "url", "stream_url", "mp3_url", "media_url" };
         for (String field : fields) {
             if (streamData.has(field) && !streamData.get(field).isNull()) {
@@ -51,19 +103,6 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
                 }
             }
         }
-
-        if (streamData.has("segments") && streamData.get("segments").isArray()
-                && streamData.get("segments").size() > 0) {
-            JsonNode firstSegment = streamData.get("segments").get(0);
-            if (firstSegment.has("url")) {
-                return firstSegment.get("url").asText();
-            }
-        }
-
-        if (streamData.has("hlsUrl") && !streamData.get("hlsUrl").isNull()) {
-            return streamData.get("hlsUrl").asText();
-        }
-
         return null;
     }
 
@@ -75,5 +114,52 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
     @Override
     public AudioSourceManager getSourceManager() {
         return sourceManager;
+    }
+
+    private static class GaanaSeekableStream extends SeekableInputStream {
+        private final byte[] data;
+        private int position = 0;
+
+        public GaanaSeekableStream(byte[] data) {
+            super(data.length, 0);
+            this.data = data;
+        }
+
+        @Override
+        public int read() {
+            if (position >= data.length)
+                return -1;
+            return data[position++] & 0xFF;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) {
+            if (position >= data.length)
+                return -1;
+            int available = Math.min(len, data.length - position);
+            System.arraycopy(data, position, b, off, available);
+            position += available;
+            return available;
+        }
+
+        @Override
+        public long getPosition() {
+            return position;
+        }
+
+        @Override
+        protected void seekHard(long pos) {
+            this.position = (int) Math.min(pos, data.length);
+        }
+
+        @Override
+        public boolean canSeekHard() {
+            return true;
+        }
+
+        @Override
+        public List<AudioTrackInfoProvider> getTrackInfoProviders() {
+            return Collections.emptyList();
+        }
     }
 }
