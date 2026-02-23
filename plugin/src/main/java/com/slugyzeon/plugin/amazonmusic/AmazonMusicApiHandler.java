@@ -239,11 +239,7 @@ public class AmazonMusicApiHandler {
         trackInfo.put("author", decodeHtml(getText(item.path("secondaryText"), "Unknown Artist")));
         trackInfo.put("uri", "https://music.amazon.com/tracks/" + identifier);
         trackInfo.put("artworkUrl", upgradeArtwork(item.path("image").asText(null)));
-        long duration = extractDuration(item);
-        if (duration <= 0) {
-            duration = fetchTrackDuration("https://music.amazon.com/tracks/" + identifier);
-        }
-        trackInfo.put("length", duration);
+        trackInfo.put("length", extractDuration(item));
         trackInfo.put("isrc", null);
         return trackInfo;
     }
@@ -280,7 +276,7 @@ public class AmazonMusicApiHandler {
         return 0L;
     }
 
-    private long fetchTrackDuration(String trackUrl) {
+    public long fetchTrackDuration(String trackUrl) {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(trackUrl))
