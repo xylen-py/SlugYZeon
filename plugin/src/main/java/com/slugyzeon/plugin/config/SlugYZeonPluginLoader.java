@@ -24,27 +24,27 @@ public class SlugYZeonPluginLoader implements AudioPlayerManagerConfiguration {
     @Override
     public AudioPlayerManager configure(AudioPlayerManager manager) {
         if (config.getGaana().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Gaana audio source manager...");
-            manager.registerSourceManager(new GaanaAudioSourceManager(config.getGaana()));
+            log.info("Registering Gaana audio source manager...");
+            manager.registerSourceManager(new GaanaAudioSourceManager(config.getGaana(), manager));
         }
 
         if (config.getAmazonmusic().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Amazon Music audio source manager...");
-            manager.registerSourceManager(new AmazonMusicAudioSourceManager(config.getAmazonmusic()));
+            log.info("Registering Amazon Music audio source manager...");
+            manager.registerSourceManager(new AmazonMusicAudioSourceManager(config.getAmazonmusic(), manager));
         }
 
         if (config.getInstagram().isEnabled()) {
-            log.info("[SlugYZeoN] Registering Instagram audio source manager...");
+            log.info("Registering Instagram audio source manager...");
             manager.registerSourceManager(new InstagramAudioSourceManager(config.getInstagram()));
         }
 
         if (config.getLastfm().isEnabled()) {
             String apiKey = config.getLastfm().getApiKey();
             if (apiKey == null || apiKey.isEmpty()) {
-                log.warn("[SlugYZeoN] Last.fm source disabled: no API key provided");
+                log.warn("Last.fm source disabled: no API key provided");
             } else {
-                log.info("[SlugYZeoN] Registering Last.fm audio source manager...");
-                manager.registerSourceManager(new LastFmAudioSourceManager(config.getLastfm()));
+                log.info("Registering Last.fm audio source manager...");
+                manager.registerSourceManager(new LastFmAudioSourceManager(config.getLastfm(), manager));
             }
         }
 

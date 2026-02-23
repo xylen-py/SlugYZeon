@@ -1,5 +1,7 @@
 package com.slugyzeon.plugin.mirror;
 
+import com.slugyzeon.plugin.gaana.GaanaAudioSourceManager;
+import com.slugyzeon.plugin.amazonmusic.AmazonMusicAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.track.AudioItem;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioReference;
@@ -11,8 +13,8 @@ public class DefaultMirroringAudioTrackResolver implements MirroringAudioTrackRe
     private static final Logger log = LoggerFactory.getLogger(DefaultMirroringAudioTrackResolver.class);
 
     private String[] providers = {
-            "ytsearch:\"%ISRC%\"",
-            "ytsearch:%QUERY%"
+            "ytsearch:\"" + MirroringAudioSourceManager.ISRC_PATTERN + "\"",
+            "ytsearch:" + MirroringAudioSourceManager.QUERY_PATTERN
     };
 
     public DefaultMirroringAudioTrackResolver(String[] providers) {
@@ -24,15 +26,32 @@ public class DefaultMirroringAudioTrackResolver implements MirroringAudioTrackRe
     @Override
     public AudioItem apply(MirroringAudioTrack track) {
         for (var provider : providers) {
-            if (provider.contains("%ISRC%")) {
+            if (provider.startsWith(GaanaAudioSourceManager.SEARCH_PREFIX)) {
+                log.warn("Cannot use Gaana search as a mirror provider!");
+                continue;
+            }
+
+            if (provider.startsWith(GaanaAudioSourceManager.RECOMMEND_PREFIX)) {
+                log.warn("Cannot use Gaana recommendations as a mirror provider!");
+                continue;
+            }
+
+            if (provider.startsWith(AmazonMusicAudioSourceManager.SEARCH_PREFIX)) {
+                log.warn("Cannot use Amazon Music search as a mirror provider!");
+                continue;
+            }
+
+            if (provider.contains(MirroringAudioSourceManager.ISRC_PATTERN)) {
                 if (track.getInfo().isrc != null && !track.getInfo().isrc.isEmpty()) {
-                    provider = provider.replace("%ISRC%", track.getInfo().isrc.replace("-", ""));
+                    provider = provider.replace(MirroringAudioSourceManager.ISRC_PATTERN,
+                            track.getInfo().isrc.replace("-", ""));
                 } else {
+                    log.debug("Skipping provider \"{}\" — track has no ISRC", provider);
                     continue;
                 }
             }
 
-            provider = provider.replace("%QUERY%", getTrackTitle(track));
+            provider = provider.replace(MirroringAudioSourceManager.QUERY_PATTERN, getTrackTitle(track));
 
             AudioItem item;
             try {
@@ -55,7 +74,7 @@ public class DefaultMirroringAudioTrackResolver implements MirroringAudioTrackRe
 
     public String getTrackTitle(MirroringAudioTrack track) {
         var query = track.getInfo().title;
-        if (!track.getInfo().author.equals("unknown")) {
+        if (!track.getInfo().author.equals("unknown") && !track.getInfo().author.equals("Unknown")) {
             query += " " + track.getInfo().author;
         }
         return query;

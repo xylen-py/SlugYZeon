@@ -2,12 +2,15 @@ package com.slugyzeon.plugin.instagram;
 
 import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
 import com.sedmelluq.discord.lavaplayer.tools.io.PersistentHttpStream;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import com.sedmelluq.discord.lavaplayer.track.DelegatedAudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.playback.LocalAudioTrackExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.Map;
@@ -15,6 +18,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class InstagramAudioTrack extends DelegatedAudioTrack {
+
+    private static final Logger log = LoggerFactory.getLogger(InstagramAudioTrack.class);
 
     private static final Pattern POST_PATTERN = Pattern.compile("instagram\\.com/p/([\\w-]+)");
     private static final Pattern REEL_PATTERN = Pattern.compile("instagram\\.com/(?:reels?|reel)/([\\w-]+)");
@@ -38,7 +43,8 @@ public class InstagramAudioTrack extends DelegatedAudioTrack {
         }
 
         if (videoUrl == null || videoUrl.isEmpty()) {
-            throw new RuntimeException("No stream URL available for Instagram track: " + trackInfo.title);
+            throw new FriendlyException("No stream URL available for Instagram track: " + trackInfo.title,
+                    FriendlyException.Severity.COMMON, null);
         }
 
         try (HttpInterface httpInterface = sourceManager.getHttpInterface()) {
@@ -54,11 +60,11 @@ public class InstagramAudioTrack extends DelegatedAudioTrack {
             if (uri == null)
                 return null;
 
-            InstagramApiHandler apiHandler = sourceManager.getApiHandler();
+            InstagramApiHandler api = sourceManager.getApiHandler();
 
             Matcher audioMatcher = AUDIO_PATTERN.matcher(uri);
             if (audioMatcher.find()) {
-                Map<String, Object> data = apiHandler.fetchFromAudioAPI(audioMatcher.group(1));
+                Map<String, Object> data = api.fetchFromAudioAPI(audioMatcher.group(1));
                 return data != null ? (String) data.get("videoUrl") : null;
             }
 
@@ -77,12 +83,13 @@ public class InstagramAudioTrack extends DelegatedAudioTrack {
             }
 
             if (shortcode != null) {
-                Map<String, Object> data = apiHandler.fetchFromGraphQL(shortcode, pathSegment);
+                Map<String, Object> data = api.fetchFromGraphQL(shortcode, pathSegment);
                 return data != null ? (String) data.get("videoUrl") : null;
             }
 
             return null;
         } catch (Exception e) {
+            log.debug("Failed to refetch Instagram stream URL: {}", e.getMessage());
             return null;
         }
     }

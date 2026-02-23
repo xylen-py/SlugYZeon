@@ -3,31 +3,31 @@ package com.slugyzeon.plugin.gaana;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.slugyzeon.plugin.config.SlugYZeonConfig;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 public class GaanaApiHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GaanaApiHandler.class);
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
-    private final OkHttpClient httpClient;
+    private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final String baseUrl;
 
     public GaanaApiHandler(SlugYZeonConfig.GaanaConfig config) {
-        this.httpClient = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(15, TimeUnit.SECONDS)
-                .followRedirects(true)
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
         this.objectMapper = new ObjectMapper();
         String url = config.getApiUrl();
@@ -35,66 +35,95 @@ public class GaanaApiHandler {
     }
 
     public JsonNode searchSongs(String query, int limit) throws IOException {
-        String encoded = URLEncoder.encode(query, StandardCharsets.UTF_8);
-        return getJson("/api/search/songs?q=" + encoded + "&limit=" + limit);
+        return fetchJson("/api/search/songs?q=" + enc(query) + "&limit=" + limit);
+    }
+
+    public JsonNode searchAlbums(String query, int limit) throws IOException {
+        return fetchJson("/api/search/albums?q=" + enc(query) + "&limit=" + limit);
+    }
+
+    public JsonNode searchPlaylists(String query, int limit) throws IOException {
+        return fetchJson("/api/search/playlists?q=" + enc(query) + "&limit=" + limit);
+    }
+
+    public JsonNode searchArtists(String query, int limit) throws IOException {
+        return fetchJson("/api/search/artists?q=" + enc(query) + "&limit=" + limit);
+    }
+
+    public JsonNode searchAll(String query, int limit) throws IOException {
+        return fetchJson("/api/search?q=" + enc(query) + "&limit=" + limit);
     }
 
     public JsonNode getSong(String seokey) throws IOException {
-        return getJson("/api/songs/" + URLEncoder.encode(seokey, StandardCharsets.UTF_8));
+        return fetchJson("/api/songs/" + enc(seokey));
     }
 
     public JsonNode getAlbum(String seokey) throws IOException {
-        return getJson("/api/albums/" + URLEncoder.encode(seokey, StandardCharsets.UTF_8));
+        return fetchJson("/api/albums/" + enc(seokey));
     }
 
     public JsonNode getPlaylist(String seokey) throws IOException {
-        return getJson("/api/playlists/" + URLEncoder.encode(seokey, StandardCharsets.UTF_8));
+        return fetchJson("/api/playlists/" + enc(seokey));
     }
 
     public JsonNode getArtist(String seokey) throws IOException {
-        return getJson("/api/artists/" + URLEncoder.encode(seokey, StandardCharsets.UTF_8));
+        return fetchJson("/api/artists/" + enc(seokey));
+    }
+
+    public JsonNode getTrending(int limit) throws IOException {
+        return fetchJson("/api/trending?limit=" + limit);
+    }
+
+    public JsonNode getCharts(int limit) throws IOException {
+        return fetchJson("/api/charts?limit=" + limit);
+    }
+
+    public JsonNode getNewReleases(String language) throws IOException {
+        return fetchJson("/api/new-releases" + (language != null ? "?language=" + enc(language) : ""));
     }
 
     public JsonNode getStream(String trackId, String quality) throws IOException {
-        String encodedId = URLEncoder.encode(trackId, StandardCharsets.UTF_8);
-        String encodedQuality = URLEncoder.encode(quality, StandardCharsets.UTF_8);
-        return getJson("/api/stream/" + encodedId + "?quality=" + encodedQuality);
+        return fetchJson("/api/stream/" + enc(trackId) + "?quality=" + enc(quality));
     }
 
-    private JsonNode getJson(String path) throws IOException {
+    private JsonNode fetchJson(String path) throws IOException {
         String finalPath = path;
-        if (baseUrl.endsWith("/api") && finalPath.startsWith("/api")) {
+        if (baseUrl.endsWith("/api") && finalPath.startsWith("/api"))
             finalPath = finalPath.substring(4);
-        }
 
-        String url = baseUrl + finalPath;
-        Request request = new Request.Builder()
-                .url(url)
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + finalPath))
                 .header("Accept", "application/json")
                 .header("User-Agent", USER_AGENT)
                 .header("Referer", "https://gaana.com/")
                 .header("Origin", "https://gaana.com")
-                .get()
-                .build();
+                .timeout(Duration.ofSeconds(15))
+                .GET().build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                log.debug("[Gaana] Request failed: {} {}", response.code(), url);
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200 || response.body() == null)
                 return null;
-            }
 
-            String bodyStr = response.body().string();
-            JsonNode json = objectMapper.readTree(bodyStr);
+            JsonNode json = objectMapper.readTree(response.body());
 
             if (json.has("success")) {
                 if (!json.get("success").asBoolean(false))
                     return null;
                 return json.has("data") ? json.get("data") : json;
             }
+
             return json;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         } catch (Exception e) {
-            log.debug("[Gaana] Error fetching {}: {}", url, e.getMessage());
+            log.debug("API request failed for {}: {}", finalPath, e.getMessage());
             return null;
         }
+    }
+
+    private static String enc(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 }

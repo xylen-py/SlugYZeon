@@ -51,6 +51,7 @@ public class SlugYZeonConfig {
         private int playlistLoadLimit = 50;
         private int albumLoadLimit = 50;
         private int artistLoadLimit = 50;
+        private String[] providers;
 
         public boolean isEnabled() {
             return enabled;
@@ -99,11 +100,20 @@ public class SlugYZeonConfig {
         public void setArtistLoadLimit(int artistLoadLimit) {
             this.artistLoadLimit = artistLoadLimit;
         }
+
+        public String[] getProviders() {
+            return providers;
+        }
+
+        public void setProviders(String[] providers) {
+            this.providers = providers;
+        }
     }
 
     public static class AmazonMusicConfig {
         private boolean enabled = true;
         private String countryCode = "IN";
+        private String[] providers;
 
         public boolean isEnabled() {
             return enabled;
@@ -119,6 +129,14 @@ public class SlugYZeonConfig {
 
         public void setCountryCode(String countryCode) {
             this.countryCode = countryCode;
+        }
+
+        public String[] getProviders() {
+            return providers;
+        }
+
+        public void setProviders(String[] providers) {
+            this.providers = providers;
         }
     }
 
@@ -137,7 +155,7 @@ public class SlugYZeonConfig {
     public static class LastFmConfig {
         private boolean enabled = true;
         private String apiKey = "";
-        private int maxSearchResults = 10;
+        private String[] providers;
 
         public boolean isEnabled() {
             return enabled;
@@ -155,12 +173,12 @@ public class SlugYZeonConfig {
             this.apiKey = apiKey;
         }
 
-        public int getMaxSearchResults() {
-            return maxSearchResults;
+        public String[] getProviders() {
+            return providers;
         }
 
-        public void setMaxSearchResults(int maxSearchResults) {
-            this.maxSearchResults = maxSearchResults;
+        public void setProviders(String[] providers) {
+            this.providers = providers;
         }
     }
 }

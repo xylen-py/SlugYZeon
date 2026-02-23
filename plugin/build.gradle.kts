@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.slugyzeon"
-version = "1.3.3"
+version = "2.1.3"
 
 lavalinkPlugin {
     name = "slugyzeon-plugin"
@@ -36,6 +36,5 @@ publishing {
 }
 
 dependencies {
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+    compileOnly("com.fasterxml.jackson.core:jackson-databind:2.17.0")
 }

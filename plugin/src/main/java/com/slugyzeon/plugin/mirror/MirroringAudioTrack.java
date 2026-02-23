@@ -24,30 +24,32 @@ public abstract class MirroringAudioTrack extends DelegatedAudioTrack {
 
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
-        var track = this.sourceManager.getResolver().apply(this);
+        AudioItem track = this.sourceManager.getResolver().apply(this);
 
         if (track instanceof AudioPlaylist) {
             var tracks = ((AudioPlaylist) track).getTracks();
             if (tracks.isEmpty()) {
-                throw new TrackNotFoundException("No tracks found for: " + trackInfo.title);
+                throw new TrackNotFoundException("No tracks found in playlist or search result for track");
             }
             track = tracks.get(0);
         }
 
         if (track instanceof InternalAudioTrack) {
-            var internalTrack = (InternalAudioTrack) track;
+            InternalAudioTrack internalTrack = (InternalAudioTrack) track;
 
-            if (trackInfo.length == 0 && internalTrack.getDuration() > 0) {
-                updateDuration(internalTrack.getDuration());
-            }
+            internalTrack.setUserData(this.getUserData());
 
-            log.debug("Loaded mirror from {} {}({})", internalTrack.getSourceManager().getSourceName(),
-                    internalTrack.getInfo().title, internalTrack.getInfo().uri);
+            updateDuration(internalTrack.getDuration());
+
+            log.debug("Loaded mirror from {} {}({})",
+                    internalTrack.getSourceManager().getSourceName(),
+                    internalTrack.getInfo().title,
+                    internalTrack.getInfo().uri);
             processDelegate(internalTrack, executor);
             return;
         }
 
-        throw new TrackNotFoundException("No mirror found for: " + trackInfo.title);
+        throw new TrackNotFoundException("No mirror found for track");
     }
 
     private void updateDuration(long duration) {
@@ -70,21 +72,25 @@ public abstract class MirroringAudioTrack extends DelegatedAudioTrack {
         this.sourceManager.getAudioPlayerManager().loadItem(query, new AudioLoadResultHandler() {
             @Override
             public void trackLoaded(AudioTrack track) {
+                log.debug("Track loaded: {}", track.getIdentifier());
                 cf.complete(track);
             }
 
             @Override
             public void playlistLoaded(AudioPlaylist playlist) {
+                log.debug("Playlist loaded: {}", playlist.getName());
                 cf.complete(playlist);
             }
 
             @Override
             public void noMatches() {
+                log.debug("No matches found for: {}", query);
                 cf.complete(AudioReference.NO_TRACK);
             }
 
             @Override
             public void loadFailed(FriendlyException exception) {
+                log.debug("Failed to load: {}", query);
                 cf.completeExceptionally(exception);
             }
         });
