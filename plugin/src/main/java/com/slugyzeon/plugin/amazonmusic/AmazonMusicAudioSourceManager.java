@@ -119,12 +119,13 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
 
         AudioTrack first = tracks.get(0);
         if (first.getDuration() == 0 && first.getInfo().uri != null) {
-            long duration = api.fetchTrackDuration(first.getInfo().uri);
-            if (duration > 0) {
-                AudioTrackInfo old = first.getInfo();
-                AudioTrackInfo fixed = new AudioTrackInfo(old.title, old.author, duration, old.identifier, false,
-                        old.uri, old.artworkUrl, old.isrc);
-                tracks.set(0, new AmazonMusicAudioTrack(fixed, null, null, null, this));
+            try {
+                String trackId = first.getInfo().identifier;
+                AudioItem resolved = resolveTrack(first.getInfo().uri, trackId);
+                if (resolved instanceof AudioTrack) {
+                    tracks.set(0, (AudioTrack) resolved);
+                }
+            } catch (Exception e) {
             }
         }
 
