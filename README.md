@@ -42,7 +42,7 @@ Add to your Lavalink `application.yml`:
 ```yaml
 lavalink:
     plugins:
-        - dependency: "com.github.xylen-py:slugyzeon-plugin:v2.1.3"
+        - dependency: "com.github.xylen-py:slugyzeon-plugin:vx.y.z"
           repository: https://jitpack.io
           snapshot: false
 ```
