@@ -15,7 +15,7 @@ public class AmazonMusicAudioPlaylist extends BasicAudioPlaylist {
 
     public AmazonMusicAudioPlaylist(String name, List<AudioTrack> tracks, Type type, String url, String artworkURL,
             String author, Integer totalTracks) {
-        super(name, tracks, null, false);
+        super(name, tracks, null, type == Type.SEARCH);
         this.type = type;
         this.url = url;
         this.artworkURL = artworkURL;
