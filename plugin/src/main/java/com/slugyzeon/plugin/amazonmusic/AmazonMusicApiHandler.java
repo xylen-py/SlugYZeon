@@ -35,8 +35,6 @@ public class AmazonMusicApiHandler {
     private static final Pattern JSON_LD_PATTERN = Pattern
             .compile("<script [^>]*type=\"application/ld\\+json\"[^>]*>([\\s\\S]*?)</script>");
     private static final Pattern OG_IMAGE_PATTERN = Pattern.compile("<meta property=\"og:image\" content=\"([^\"]+)\"");
-    private static final Pattern MUSIC_DURATION_PATTERN = Pattern
-            .compile("<meta (?:property|name)=\"music:duration\" content=\"([^\"]+)\"");
     private static final Pattern OG_TITLE_PATTERN = Pattern.compile("<meta property=\"og:title\" content=\"([^\"]+)\"");
     private static final Pattern HEADER_PRIMARY_TEXT = Pattern
             .compile("<music-detail-header[^>]*primary-text=\"([^\"]+)\"");
@@ -272,31 +270,6 @@ public class AmazonMusicApiHandler {
                 if (d > 0)
                     return d;
             }
-        }
-        return 0L;
-    }
-
-    public long fetchTrackDuration(String trackUrl) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(trackUrl))
-                    .header("User-Agent", BOT_UA)
-                    .header("Accept", "text/html")
-                    .timeout(Duration.ofSeconds(10))
-                    .GET().build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200 || response.body() == null)
-                return 0L;
-
-            Matcher m = MUSIC_DURATION_PATTERN.matcher(response.body());
-            if (m.find()) {
-                long seconds = Long.parseLong(m.group(1).trim());
-                return seconds * 1000L;
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
         }
         return 0L;
     }
