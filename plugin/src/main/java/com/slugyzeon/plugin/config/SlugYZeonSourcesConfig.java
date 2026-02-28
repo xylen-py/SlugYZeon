@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 @ConfigurationProperties(prefix = "plugins.slugyzeon.sources")
 @Component
-public class SourcesConfig {
+public class SlugYZeonSourcesConfig {
 
     private boolean gaana = true;
     private boolean amazonmusic = true;

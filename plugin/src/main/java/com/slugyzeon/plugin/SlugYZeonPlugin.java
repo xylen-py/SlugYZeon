@@ -30,7 +30,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private PandoraAudioSourceManager pandora;
 
     public SlugYZeonPlugin(
-            SourcesConfig sourcesConfig,
+            SlugYZeonSourcesConfig sourcesConfig,
             GaanaConfig gaanaConfig,
             AmazonMusicConfig amazonMusicConfig,
             InstagramConfig instagramConfig,
