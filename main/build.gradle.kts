@@ -3,9 +3,6 @@ plugins {
     `maven-publish`
 }
 
-group = "com.slugyzeon"
-version = "2.1.3"
-
 java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
@@ -32,11 +29,9 @@ dependencies {
 
 publishing {
     publications {
-        create<MavenPublication>("jitpack") {
+        create<MavenPublication>("maven") {
             from(components["java"])
-            groupId = project.group.toString()
             artifactId = "slugyzeon-main"
-            version = project.version.toString()
         }
     }
 }
