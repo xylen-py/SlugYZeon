@@ -1,17 +1,10 @@
 plugins {
     java
     `maven-publish`
-    alias(libs.plugins.lavalink)
 }
 
 group = "com.slugyzeon"
 version = "2.1.3"
-
-lavalinkPlugin {
-    name = "slugyzeon-plugin"
-    apiVersion = libs.versions.lavalink.api
-    serverVersion = libs.versions.lavalink.server
-}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -24,18 +17,26 @@ tasks {
     }
 }
 
+repositories {
+    mavenCentral()
+    maven("https://maven.lavalink.dev/releases")
+    maven("https://maven.lavalink.dev/snapshots")
+    maven("https://jitpack.io")
+}
+
+dependencies {
+    compileOnly("dev.arbjerg:lavaplayer:2.0.4")
+    compileOnly("com.fasterxml.jackson.core:jackson-databind:2.17.0")
+    compileOnly("org.slf4j:slf4j-api:2.0.9")
+}
+
 publishing {
     publications {
         create<MavenPublication>("jitpack") {
             from(components["java"])
             groupId = project.group.toString()
-            artifactId = "slugyzeon-plugin"
+            artifactId = "slugyzeon-main"
             version = project.version.toString()
         }
     }
-}
-
-dependencies {
-    compileOnly("com.fasterxml.jackson.core:jackson-databind:2.17.0")
-    implementation(project(":slugyzeon-main"))
 }

@@ -1,0 +1,369 @@
+package com.slugyzeon.plugin.gaana;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.track.*;
+import com.slugyzeon.plugin.ExtendedAudioPlaylist;
+import com.slugyzeon.plugin.mirror.DefaultMirroringAudioTrackResolver;
+import com.slugyzeon.plugin.mirror.MirroringAudioSourceManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.DataInput;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
+
+    private static final Logger log = LoggerFactory.getLogger(GaanaAudioSourceManager.class);
+
+    public static final String SOURCE_NAME = "gaana";
+    public static final String SEARCH_PREFIX = "gnsearch:";
+    public static final String RECOMMEND_PREFIX = "gnrec:";
+    public static final int MAX_SEARCH_RESULTS = 25;
+
+    public static final Pattern URL_PATTERN = Pattern.compile(
+            "^@?(?:https?://)?(?:www\\.)?gaana\\.com/(?<type>song|album|playlist|artist)/(?<seokey>[\\w-]+)(?:[?#].*)?$");
+
+    private final GaanaApiHandler api;
+    private final int playlistLoadLimit;
+    private final int albumLoadLimit;
+    private final int artistLoadLimit;
+
+    public GaanaAudioSourceManager(String[] providers, String apiUrl, int playlistLoadLimit, int albumLoadLimit,
+            int artistLoadLimit, Function<Void, AudioPlayerManager> manager) {
+        super(manager, new DefaultMirroringAudioTrackResolver(providers));
+        this.playlistLoadLimit = playlistLoadLimit;
+        this.albumLoadLimit = albumLoadLimit;
+        this.artistLoadLimit = artistLoadLimit;
+        this.api = new GaanaApiHandler(apiUrl);
+    }
+
+    @Override
+    public AudioPlayerManager getAudioPlayerManager() {
+        return this.audioPlayerManager.apply(null);
+    }
+
+    @Override
+    public String getSourceName() {
+        return SOURCE_NAME;
+    }
+
+    @Override
+    public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
+        return loadItem(reference.identifier);
+    }
+
+    public AudioItem loadItem(String identifier) {
+        try {
+            if (identifier.startsWith(SEARCH_PREFIX)) {
+                return getSearch(identifier.substring(SEARCH_PREFIX.length()).trim());
+            }
+
+            if (identifier.startsWith(RECOMMEND_PREFIX)) {
+                return getRecommendations(identifier.substring(RECOMMEND_PREFIX.length()).trim());
+            }
+
+            Matcher matcher = URL_PATTERN.matcher(identifier);
+            if (!matcher.matches())
+                return null;
+
+            String type = matcher.group("type");
+            String seokey = matcher.group("seokey");
+
+            switch (type) {
+                case "song":
+                    return getSong(seokey);
+                case "album":
+                    return getAlbum(seokey);
+                case "playlist":
+                    return getPlaylist(seokey);
+                case "artist":
+                    return getArtist(seokey);
+                default:
+                    return null;
+            }
+        } catch (IOException e) {
+            throw new FriendlyException("Failed to load Gaana track", FriendlyException.Severity.SUSPICIOUS, e);
+        }
+    }
+
+    public AudioItem getSearch(String query) throws IOException {
+        if (query.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        JsonNode data = api.searchSongs(query, MAX_SEARCH_RESULTS);
+        if (data == null || !data.isArray() || data.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        List<AudioTrack> tracks = parseTracks(data);
+        if (tracks.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        return new GaanaAudioPlaylist(
+                "Gaana Search: " + query,
+                tracks,
+                ExtendedAudioPlaylist.Type.PLAYLIST,
+                null,
+                null,
+                null,
+                tracks.size());
+    }
+
+    public AudioItem getRecommendations(String query) throws IOException {
+        if (query.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        JsonNode trending = api.getTrending(MAX_SEARCH_RESULTS);
+        if (trending == null)
+            return AudioReference.NO_TRACK;
+
+        JsonNode tracksNode = trending.has("tracks") ? trending.get("tracks") : trending;
+        if (tracksNode == null || !tracksNode.isArray() || tracksNode.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        List<AudioTrack> tracks = parseTracks(tracksNode);
+        if (tracks.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        return new GaanaAudioPlaylist(
+                "Gaana Recommendations: " + query,
+                tracks,
+                ExtendedAudioPlaylist.Type.RECOMMENDATIONS,
+                null,
+                tracks.get(0).getInfo().artworkUrl != null ? tracks.get(0).getInfo().artworkUrl : null,
+                null,
+                tracks.size());
+    }
+
+    public AudioItem getSong(String seokey) throws IOException {
+        JsonNode data = api.getSong(seokey);
+        if (data == null)
+            return AudioReference.NO_TRACK;
+
+        AudioTrack track = parseTrack(data);
+        return track != null ? track : AudioReference.NO_TRACK;
+    }
+
+    public AudioItem getAlbum(String seokey) throws IOException {
+        JsonNode data = api.getAlbum(seokey);
+        if (data == null)
+            return AudioReference.NO_TRACK;
+
+        String name = getField(data, "title", "name");
+        String artworkUrl = getField(data, "artworkUrl", "artwork");
+        String author = getField(data, "artists");
+        String albumUrl = data.has("album_url") ? data.get("album_url").asText()
+                : "https://gaana.com/album/" + seokey;
+        int totalTracks = data.has("track_count") ? data.get("track_count").asInt(0) : 0;
+
+        JsonNode tracksNode = getTracksArray(data);
+        if (tracksNode == null)
+            return AudioReference.NO_TRACK;
+
+        List<AudioTrack> tracks = parseTracksWithLimit(tracksNode, albumLoadLimit);
+        if (tracks.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        return new GaanaAudioPlaylist(
+                name != null ? name : "Gaana Album",
+                tracks,
+                ExtendedAudioPlaylist.Type.ALBUM,
+                albumUrl,
+                artworkUrl,
+                author,
+                totalTracks > 0 ? totalTracks : tracks.size());
+    }
+
+    public AudioItem getPlaylist(String seokey) throws IOException {
+        JsonNode data = api.getPlaylist(seokey);
+        if (data == null)
+            return AudioReference.NO_TRACK;
+
+        JsonNode playlist = data.has("playlist") ? data.get("playlist") : data;
+
+        String name = getField(playlist, "title", "name", "playlist_name");
+        String artworkUrl = getField(playlist, "artworkUrl", "artwork");
+        String author = getField(playlist, "artists", "username");
+        String playlistUrl = playlist.has("playlist_url") ? playlist.get("playlist_url").asText()
+                : "https://gaana.com/playlist/" + seokey;
+        int totalTracks = playlist.has("track_count") ? playlist.get("track_count").asInt(0) : 0;
+
+        JsonNode tracksNode = getTracksArray(playlist);
+        if (tracksNode == null)
+            return AudioReference.NO_TRACK;
+
+        List<AudioTrack> tracks = parseTracksWithLimit(tracksNode, playlistLoadLimit);
+        if (tracks.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        return new GaanaAudioPlaylist(
+                name != null ? name : "Gaana Playlist",
+                tracks,
+                ExtendedAudioPlaylist.Type.PLAYLIST,
+                playlistUrl,
+                artworkUrl,
+                author,
+                totalTracks > 0 ? totalTracks : tracks.size());
+    }
+
+    public AudioItem getArtist(String seokey) throws IOException {
+        JsonNode data = api.getArtist(seokey);
+        if (data == null)
+            return AudioReference.NO_TRACK;
+
+        String name = getField(data, "name", "title");
+        String artworkUrl = getField(data, "artwork", "artworkUrl");
+        String artistUrl = data.has("artist_url") ? data.get("artist_url").asText()
+                : "https://gaana.com/artist/" + seokey;
+
+        JsonNode tracksNode = data.has("top_tracks") ? data.get("top_tracks") : getTracksArray(data);
+        if (tracksNode == null)
+            return AudioReference.NO_TRACK;
+
+        List<AudioTrack> tracks = parseTracksWithLimit(tracksNode, artistLoadLimit);
+        if (tracks.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        return new GaanaAudioPlaylist(
+                (name != null ? name : "Artist") + "'s Top Tracks",
+                tracks,
+                ExtendedAudioPlaylist.Type.ARTIST,
+                artistUrl,
+                artworkUrl,
+                name,
+                tracks.size());
+    }
+
+    private JsonNode getTracksArray(JsonNode data) {
+        for (String key : new String[] { "tracks", "top_tracks", "songs" }) {
+            if (data.has(key) && data.get(key).isArray())
+                return data.get(key);
+        }
+        return null;
+    }
+
+    private List<AudioTrack> parseTracks(JsonNode array) {
+        List<AudioTrack> tracks = new ArrayList<>();
+        for (JsonNode item : array) {
+            AudioTrack track = parseTrack(item);
+            if (track != null)
+                tracks.add(track);
+        }
+        return tracks;
+    }
+
+    private List<AudioTrack> parseTracksWithLimit(JsonNode array, int limit) {
+        List<AudioTrack> tracks = new ArrayList<>();
+        for (JsonNode item : array) {
+            if (tracks.size() >= limit)
+                break;
+            AudioTrack track = parseTrack(item);
+            if (track != null)
+                tracks.add(track);
+        }
+        return tracks;
+    }
+
+    private AudioTrack parseTrack(JsonNode node) {
+        if (node == null)
+            return null;
+
+        String title = getField(node, "title", "name");
+        if (title == null)
+            return null;
+
+        long duration = 0;
+        if (node.has("duration"))
+            duration = node.get("duration").asLong(0) * 1000;
+
+        String author = formatArtists(node.get("artists"));
+        if (author == null || author.isEmpty())
+            author = "Unknown";
+
+        String identifier = getField(node, "track_id", "seokey");
+        if (identifier == null)
+            return null;
+
+        String seokey = node.has("seokey") ? node.get("seokey").asText() : null;
+        String uri = node.has("song_url") ? node.get("song_url").asText()
+                : seokey != null ? "https://gaana.com/song/" + seokey : null;
+
+        String artworkUrl = parseArtworkUrl(node);
+        String isrc = node.has("isrc") ? node.get("isrc").asText(null) : null;
+
+        String albumName = getField(node, "album");
+        String albumSeokey = node.has("album_seokey") ? node.get("album_seokey").asText(null) : null;
+        String albumUrl = node.has("album_url") ? node.get("album_url").asText()
+                : albumSeokey != null ? "https://gaana.com/album/" + albumSeokey : null;
+
+        String artistUrl = parseArtistUrl(node);
+
+        AudioTrackInfo info = new AudioTrackInfo(title, author, duration, identifier, false, uri, artworkUrl, isrc);
+        return new GaanaAudioTrack(info, albumName, albumUrl, artistUrl, null, null, false, this);
+    }
+
+    private String parseArtworkUrl(JsonNode node) {
+        String url = getField(node, "artworkUrl", "artwork");
+        if (url != null && url.contains("size_m"))
+            url = url.replace("size_m", "size_l");
+        return url;
+    }
+
+    private String parseArtistUrl(JsonNode node) {
+        String artistSeokeys = node.has("artist_seokeys") ? node.get("artist_seokeys").asText(null) : null;
+        if (artistSeokeys != null && !artistSeokeys.isEmpty()) {
+            String firstArtist = artistSeokeys.split(",")[0].trim();
+            return "https://gaana.com/artist/" + firstArtist;
+        }
+        return null;
+    }
+
+    private String getField(JsonNode node, String... fieldNames) {
+        for (String name : fieldNames) {
+            if (node.has(name) && !node.get(name).isNull()) {
+                String v = node.get(name).asText("").trim();
+                if (!v.isEmpty())
+                    return v;
+            }
+        }
+        return null;
+    }
+
+    private String formatArtists(JsonNode artists) {
+        if (artists == null || artists.isNull())
+            return null;
+        if (artists.isArray()) {
+            StringBuilder sb = new StringBuilder();
+            for (JsonNode a : artists) {
+                if (sb.length() > 0)
+                    sb.append(", ");
+                sb.append(a.isObject() && a.has("name") ? a.get("name").asText() : a.asText());
+            }
+            return sb.toString();
+        }
+        return artists.asText();
+    }
+
+    public GaanaApiHandler getApiHandler() {
+        return api;
+    }
+
+    @Override
+    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
+        var extendedAudioTrackInfo = super.decodeTrack(input);
+        return new GaanaAudioTrack(trackInfo,
+                extendedAudioTrackInfo.albumName,
+                extendedAudioTrackInfo.albumUrl,
+                extendedAudioTrackInfo.artistUrl,
+                extendedAudioTrackInfo.artistArtworkUrl,
+                extendedAudioTrackInfo.previewUrl,
+                extendedAudioTrackInfo.isPreview,
+                this);
+    }
+}
