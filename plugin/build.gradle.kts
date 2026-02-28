@@ -7,6 +7,7 @@ version = System.getenv("VERSION") ?: "dev"
 
 lavalinkPlugin {
     name = "slugyzeon-plugin"
+    path = "com.slugyzeon.plugin"
     apiVersion = libs.versions.lavalink.api
     serverVersion = libs.versions.lavalink.server
 }
