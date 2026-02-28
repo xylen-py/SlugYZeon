@@ -51,6 +51,9 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             this.amazonMusic = new AmazonMusicAudioSourceManager(
                     DEFAULT_PROVIDERS,
                     amazonMusicConfig.getCountryCode(),
+                    amazonMusicConfig.getPlaylistLoadLimit(),
+                    amazonMusicConfig.getAlbumLoadLimit(),
+                    amazonMusicConfig.getArtistLoadLimit(),
                     unused -> manager);
         }
         if (sourcesConfig.isInstagram()) {
@@ -64,6 +67,9 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                 this.lastFm = new LastFmAudioSourceManager(
                         apiKey,
                         DEFAULT_PROVIDERS,
+                        lastFmConfig.getSearchLimit(),
+                        lastFmConfig.getAlbumLoadLimit(),
+                        lastFmConfig.getArtistLoadLimit(),
                         unused -> manager);
             }
         }
@@ -71,6 +77,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             this.pandora = new PandoraAudioSourceManager(
                     DEFAULT_PROVIDERS,
                     pandoraConfig.getTokenApiUrl(),
+                    pandoraConfig.getCsrfToken(),
+                    pandoraConfig.isPreferTokenApi(),
                     pandoraConfig.getSearchLimit(),
                     unused -> manager);
         }

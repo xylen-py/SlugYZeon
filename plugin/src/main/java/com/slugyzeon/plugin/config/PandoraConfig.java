@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 public class PandoraConfig {
 
     private String tokenApiUrl = "https://get.1lucas1apk.fun/pandora/gettoken";
+    private String csrfToken = "";
+    private boolean preferTokenApi = true;
     private int searchLimit = 6;
 
     public String getTokenApiUrl() {
@@ -16,6 +18,22 @@ public class PandoraConfig {
 
     public void setTokenApiUrl(String tokenApiUrl) {
         this.tokenApiUrl = tokenApiUrl;
+    }
+
+    public String getCsrfToken() {
+        return csrfToken;
+    }
+
+    public void setCsrfToken(String csrfToken) {
+        this.csrfToken = csrfToken;
+    }
+
+    public boolean isPreferTokenApi() {
+        return preferTokenApi;
+    }
+
+    public void setPreferTokenApi(boolean preferTokenApi) {
+        this.preferTokenApi = preferTokenApi;
     }
 
     public int getSearchLimit() {

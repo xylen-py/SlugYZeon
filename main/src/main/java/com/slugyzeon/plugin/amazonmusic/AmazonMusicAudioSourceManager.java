@@ -34,11 +34,18 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
 
     private final AmazonMusicApiHandler api;
     private final String countryCode;
+    private final int playlistLoadLimit;
+    private final int albumLoadLimit;
+    private final int artistLoadLimit;
 
     public AmazonMusicAudioSourceManager(String[] providers, String countryCode,
+            int playlistLoadLimit, int albumLoadLimit, int artistLoadLimit,
             Function<Void, AudioPlayerManager> manager) {
         super(manager, new DefaultMirroringAudioTrackResolver(providers));
         this.countryCode = countryCode;
+        this.playlistLoadLimit = playlistLoadLimit;
+        this.albumLoadLimit = albumLoadLimit;
+        this.artistLoadLimit = artistLoadLimit;
         this.api = new AmazonMusicApiHandler(countryCode);
     }
 
@@ -163,8 +170,23 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
         if (trackMaps == null || trackMaps.isEmpty())
             return AudioReference.NO_TRACK;
 
+        int limit;
+        switch (type) {
+            case "album":
+                limit = albumLoadLimit;
+                break;
+            case "artist":
+                limit = artistLoadLimit;
+                break;
+            default:
+                limit = playlistLoadLimit;
+                break;
+        }
+
         List<AudioTrack> tracks = new ArrayList<>();
         for (Map<String, Object> trackMap : trackMaps) {
+            if (tracks.size() >= limit)
+                break;
             AudioTrack track = mapTrack(trackMap);
             if (track != null)
                 tracks.add(track);

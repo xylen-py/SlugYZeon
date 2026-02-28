@@ -32,6 +32,8 @@ public class PandoraTokenTracker {
 
     private final PandoraAudioSourceManager sourceManager;
     private final String tokenApiUrl;
+    private final String configCsrfToken;
+    private final boolean preferTokenApi;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -41,9 +43,15 @@ public class PandoraTokenTracker {
     private volatile String authToken;
     private volatile Instant expires;
 
-    public PandoraTokenTracker(PandoraAudioSourceManager sourceManager, String tokenApiUrl) {
+    public PandoraTokenTracker(PandoraAudioSourceManager sourceManager, String tokenApiUrl,
+            String configCsrfToken, boolean preferTokenApi) {
         this.sourceManager = sourceManager;
         this.tokenApiUrl = tokenApiUrl;
+        this.configCsrfToken = configCsrfToken;
+        this.preferTokenApi = preferTokenApi;
+        if (configCsrfToken != null && !configCsrfToken.isEmpty()) {
+            this.csrfToken = configCsrfToken;
+        }
         try {
             this.refreshTokens();
         } catch (Exception e) {
@@ -76,14 +84,28 @@ public class PandoraTokenTracker {
     }
 
     private void refreshTokens() throws IOException {
-        try {
-            refreshFromTokenApi();
-            return;
-        } catch (Exception e) {
-            log.warn("Failed to fetch tokens from external API ({}), falling back to anonymous login", e.getMessage());
+        if (preferTokenApi) {
+            try {
+                refreshFromTokenApi();
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to fetch tokens from external API ({}), falling back to anonymous login",
+                        e.getMessage());
+            }
+            refreshFromAnonymousLogin();
+        } else {
+            try {
+                refreshFromAnonymousLogin();
+                return;
+            } catch (Exception e) {
+                log.warn("Failed anonymous login ({}), falling back to external token API", e.getMessage());
+            }
+            try {
+                refreshFromTokenApi();
+            } catch (Exception e) {
+                throw new IOException("All Pandora token refresh methods failed", e);
+            }
         }
-
-        refreshFromAnonymousLogin();
     }
 
     private void refreshFromTokenApi() throws IOException, InterruptedException {

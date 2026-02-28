@@ -17,8 +17,8 @@ A production-quality **Lavalink plugin** providing additional audio sources for 
 | **Gaana** | `gnsearch:` / `gnrec:` | Songs, Albums, Playlists, Artists | Mirrored |
 | **Amazon Music** | `azsearch:` | Tracks, Albums, Playlists, Artists | Mirrored |
 | **Instagram** | - | Posts, Reels, Audio Pages | Native (MP4 CDN) |
-| **Last.fm** | - | Tracks, Artists, Albums | Mirrored |
-| **Pandora** | `pdsearch:` | Tracks, Albums, Playlists, Artists, Stations | Mirrored |
+| **Last.fm** | `lfsearch:` / `lfrec:` | Tracks, Artists, Albums | Mirrored |
+| **Pandora** | `pdsearch:` / `pdrec:` | Tracks, Albums, Playlists, Artists, Stations | Mirrored |
 
 ---
 
@@ -65,12 +65,21 @@ plugins:
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50
+      searchLimit: 25
     amazonmusic:
       countryCode: "IN"
+      playlistLoadLimit: 50
+      albumLoadLimit: 50
+      artistLoadLimit: 50
     lastfm:
       apiKey: "YOUR_LASTFM_API_KEY"
+      searchLimit: 10
+      albumLoadLimit: 50
+      artistLoadLimit: 10
     pandora:
       tokenApiUrl: "https://get.1lucas1apk.fun/pandora/gettoken"
+      csrfToken: ""
+      preferTokenApi: true
       searchLimit: 6
 ```
 
@@ -137,10 +146,19 @@ GET /v4/loadtracks?identifier=https://www.instagram.com/reels/audio/123456789/
 ### Last.fm
 
 ```bash
+# Search
+GET /v4/loadtracks?identifier=lfsearch:Creep Radiohead
+
+# Recommendations (similar tracks)
+GET /v4/loadtracks?identifier=lfrec:Radiohead - Creep
+
 # Track URL
 GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead/_/Creep
 
-# Artist URL
+# Album URL
+GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead/OK+Computer
+
+# Artist URL (top tracks)
 GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead
 ```
 
@@ -149,6 +167,9 @@ GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead
 ```bash
 # Search
 GET /v4/loadtracks?identifier=pdsearch:Bohemian Rhapsody
+
+# Recommendations (similar tracks)
+GET /v4/loadtracks?identifier=pdrec:TRxxxxxx
 
 # Track URL
 GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/bohemian-rhapsody/TRxxxxxx

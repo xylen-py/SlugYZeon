@@ -12,6 +12,7 @@ public class GaanaConfig {
     private int playlistLoadLimit = 50;
     private int albumLoadLimit = 50;
     private int artistLoadLimit = 50;
+    private int searchLimit = 25;
 
     public String getApiUrl() {
         return apiUrl;
@@ -51,5 +52,13 @@ public class GaanaConfig {
 
     public void setArtistLoadLimit(int artistLoadLimit) {
         this.artistLoadLimit = artistLoadLimit;
+    }
+
+    public int getSearchLimit() {
+        return searchLimit;
+    }
+
+    public void setSearchLimit(int searchLimit) {
+        this.searchLimit = searchLimit;
     }
 }
