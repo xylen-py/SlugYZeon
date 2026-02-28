@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.lavalink)
 }
 
-version = "3.0.0"
+version = System.getenv("VERSION") ?: "dev"
 
 lavalinkPlugin {
     name = "slugyzeon-plugin"
