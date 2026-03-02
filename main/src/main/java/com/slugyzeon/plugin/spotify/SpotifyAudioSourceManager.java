@@ -185,41 +185,53 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return AudioReference.NO_TRACK;
     }
 
+    private static final int MAX_API_RETRIES = 3;
+
     private JsonNode getJson(String url, boolean anonymous) throws IOException {
         try {
             String token = anonymous
                     ? tokenTracker.getAnonymousAccessToken()
                     : tokenTracker.getAccessToken(this.preferAnonymousToken);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + token)
-                    .header("User-Agent", USER_AGENT)
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 401 && !anonymous) {
-                log.debug("Spotify API returned 401, retrying with anonymous token...");
-                String anonToken = tokenTracker.getAnonymousAccessToken();
-                HttpRequest retryRequest = HttpRequest.newBuilder()
+            for (int attempt = 0; attempt <= MAX_API_RETRIES; attempt++) {
+                HttpRequest request = HttpRequest.newBuilder()
                         .uri(URI.create(url))
                         .timeout(Duration.ofSeconds(15))
-                        .header("Authorization", "Bearer " + anonToken)
+                        .header("Authorization", "Bearer " + token)
                         .header("User-Agent", USER_AGENT)
                         .GET()
                         .build();
-                response = httpClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
-            }
 
-            if (response.statusCode() != 200) {
-                log.warn("Spotify API returned status {} for {}", response.statusCode(), url);
-                return null;
-            }
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            return mapper.readTree(response.body());
+                if (response.statusCode() == 429) {
+                    long retryAfter = response.headers()
+                            .firstValueAsLong("Retry-After")
+                            .orElse(2L + attempt);
+                    log.debug("Spotify API rate limited (429) for {}, retrying in {}s ({}/{})",
+                            url, retryAfter, attempt + 1, MAX_API_RETRIES);
+                    if (attempt < MAX_API_RETRIES) {
+                        Thread.sleep(retryAfter * 1000L);
+                        continue;
+                    }
+                    log.warn("Spotify API rate limited after {} retries for {}", MAX_API_RETRIES, url);
+                    return null;
+                }
+
+                if (response.statusCode() == 401 && !anonymous) {
+                    log.debug("Spotify API returned 401, retrying with anonymous token");
+                    token = tokenTracker.getAnonymousAccessToken();
+                    continue;
+                }
+
+                if (response.statusCode() != 200) {
+                    log.warn("Spotify API returned status {} for {}", response.statusCode(), url);
+                    return null;
+                }
+
+                return mapper.readTree(response.body());
+            }
+            return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while fetching from Spotify API", e);
