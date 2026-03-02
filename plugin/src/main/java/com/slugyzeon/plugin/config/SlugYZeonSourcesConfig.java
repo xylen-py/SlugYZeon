@@ -12,6 +12,7 @@ public class SlugYZeonSourcesConfig {
     private boolean instagram = true;
     private boolean lastfm = true;
     private boolean pandora = true;
+    private boolean spotify = false;
 
     public boolean isGaana() {
         return gaana;
@@ -51,5 +52,13 @@ public class SlugYZeonSourcesConfig {
 
     public void setPandora(boolean pandora) {
         this.pandora = pandora;
+    }
+
+    public boolean isSpotify() {
+        return spotify;
+    }
+
+    public void setSpotify(boolean spotify) {
+        this.spotify = spotify;
     }
 }

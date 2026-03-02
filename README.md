@@ -19,6 +19,7 @@ A production-quality **Lavalink plugin** providing additional audio sources for 
 | **Instagram** | - | Posts, Reels, Audio Pages | Native (MP4 CDN) |
 | **Last.fm** | `lfsearch:` / `lfrec:` | Tracks, Artists, Albums | Mirrored |
 | **Pandora** | `pdsearch:` / `pdrec:` | Tracks, Albums, Playlists, Artists, Stations | Mirrored |
+| **Spotify** | `spsearch:` / `sprec:` | Tracks, Albums, Playlists, Artists | Mirrored |
 
 ---
 
@@ -59,6 +60,7 @@ plugins:
       instagram: true
       lastfm: true
       pandora: true
+      spotify: false
     gaana:
       apiUrl: "https://gaana-plugin-api.vercel.app/api"
       streamQuality: "high"
@@ -81,15 +83,63 @@ plugins:
       csrfToken: ""
       preferTokenApi: true
       searchLimit: 6
+    spotify:
+      clientId: ""
+      clientSecret: ""
+      spDc: ""
+      countryCode: "US"
+      customTokenEndpoint: "https://spotify-gettoken.vercel.app/api/token"
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
+      resolveArtistsInSearch: true
+      localFiles: false
 ```
 
-> **Note:** Last.fm requires a valid API key. Get one at [last.fm/api](https://www.last.fm/api/account/create).
+<details>
+<summary>Pandora Configuration</summary>
+
+| Option | Default | Description |
+|---|---|---|
+| `tokenApiUrl` | `https://get.1lucas1apk.fun/pandora/gettoken` | Custom token API endpoint for Pandora auth |
+| `csrfToken` | `""` | Optional pre-configured CSRF token. If empty, fetched automatically |
+| `preferTokenApi` | `true` | When `true`, token API is tried first; when `false`, anonymous login is tried first |
+| `searchLimit` | `6` | Max search results returned |
+
+Pandora uses a two-tier token strategy: the token API endpoint provides quick auth, while anonymous login serves as a fallback.
+
+</details>
+
+<details>
+<summary>Spotify Configuration</summary>
+
+| Option | Default | Description |
+|---|---|---|
+| `clientId` | `""` | Optional Spotify OAuth client ID |
+| `clientSecret` | `""` | Optional Spotify OAuth client secret |
+| `spDc` | `""` | Optional `sp_dc` cookie for account-level features |
+| `countryCode` | `US` | Country code for regional content / artist top tracks |
+| `customTokenEndpoint` | `""` | Custom token API URL (overrides TOTP generation) |
+| `playlistLoadLimit` | `6` | Max playlist pages to load (100 tracks per page) |
+| `albumLoadLimit` | `6` | Max album pages to load (50 tracks per page) |
+| `resolveArtistsInSearch` | `true` | Batch-fetch artist images when searching tracks |
+| `localFiles` | `false` | Include local file tracks from playlists |
+
+**Token Priority:**
+1. **Client Credentials** — If `clientId` and `clientSecret` are set, OAuth token is used first
+2. **Custom Token API** — If `customTokenEndpoint` is set, that endpoint is called
+3. **TOTP Generation** — Scrapes Spotify homepage JS for secret, generates HMAC-SHA1 TOTP
+4. **Built-in Free API** — Falls back to `https://spotify-gettoken.vercel.app/api/token`
+
+> **Note:** Spotify works entirely free without any credentials. All config fields are optional. Set `spotify: true` under sources to enable it.
+
+</details>
 
 ---
 
 ## Usage
 
-### Gaana
+<details>
+<summary>Gaana</summary>
 
 ```bash
 # Search
@@ -111,7 +161,10 @@ GET /v4/loadtracks?identifier=https://gaana.com/playlist/gaana-dj-hindi-top-50-1
 GET /v4/loadtracks?identifier=https://gaana.com/artist/arijit-singh
 ```
 
-### Amazon Music
+</details>
+
+<details>
+<summary>Amazon Music</summary>
 
 ```bash
 # Search
@@ -130,7 +183,10 @@ GET /v4/loadtracks?identifier=https://music.amazon.com/playlists/B07QGZ1GJ6
 GET /v4/loadtracks?identifier=https://music.amazon.com/artists/B001GBY2LE
 ```
 
-### Instagram
+</details>
+
+<details>
+<summary>Instagram</summary>
 
 ```bash
 # Post URL
@@ -143,7 +199,10 @@ GET /v4/loadtracks?identifier=https://www.instagram.com/reel/ABC123/
 GET /v4/loadtracks?identifier=https://www.instagram.com/reels/audio/123456789/
 ```
 
-### Last.fm
+</details>
+
+<details>
+<summary>Last.fm</summary>
 
 ```bash
 # Search
@@ -162,7 +221,10 @@ GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead/OK+Computer
 GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead
 ```
 
-### Pandora
+</details>
+
+<details>
+<summary>Pandora</summary>
 
 ```bash
 # Search
@@ -187,11 +249,39 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/station/STxxxxxx
 GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 ```
 
+</details>
+
+<details>
+<summary>Spotify</summary>
+
+```bash
+# Search
+GET /v4/loadtracks?identifier=spsearch:Shape of You
+
+# Recommendations
+GET /v4/loadtracks?identifier=sprec:seed_tracks=trackId&limit=10
+
+# Track URL
+GET /v4/loadtracks?identifier=https://open.spotify.com/track/7qiZfU4dY1lWllzX7mPBI3
+
+# Album URL
+GET /v4/loadtracks?identifier=https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX
+
+# Playlist URL
+GET /v4/loadtracks?identifier=https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+
+# Artist URL (top tracks)
+GET /v4/loadtracks?identifier=https://open.spotify.com/artist/1Xyo4u8uXC1ZmMpatF05PJ
+```
+
+</details>
+
 ---
 
 ## Response Examples
 
-### Track Response (Gaana)
+<details>
+<summary>Track Response (Gaana)</summary>
 
 ```json
 {
@@ -221,7 +311,10 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 }
 ```
 
-### Track Response (Amazon Music)
+</details>
+
+<details>
+<summary>Track Response (Amazon Music)</summary>
 
 ```json
 {
@@ -250,7 +343,43 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 }
 ```
 
-### Playlist Response (Album)
+</details>
+
+<details>
+<summary>Track Response (Spotify)</summary>
+
+```json
+{
+  "loadType": "track",
+  "data": {
+    "encoded": "QAABJgMAClR...",
+    "info": {
+      "identifier": "7qiZfU4dY1lWllzX7mPBI3",
+      "isSeekable": false,
+      "author": "Ed Sheeran",
+      "length": 233713,
+      "isStream": false,
+      "position": 0,
+      "title": "Shape of You",
+      "uri": "https://open.spotify.com/track/7qiZfU4dY1lWllzX7mPBI3",
+      "artworkUrl": "https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96",
+      "isrc": "GBAHS1600463",
+      "sourceName": "spotify"
+    },
+    "pluginInfo": {
+      "albumName": "÷ (Deluxe)",
+      "albumUrl": "https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX",
+      "artistUrl": "https://open.spotify.com/artist/6eUKZXaKkcviH0Ku9w2n3V",
+      "artistArtworkUrl": null
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>Playlist Response (Album)</summary>
 
 ```json
 {
@@ -285,7 +414,10 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 }
 ```
 
-### Instagram Track Response
+</details>
+
+<details>
+<summary>Track Response (Instagram)</summary>
 
 ```json
 {
@@ -308,6 +440,8 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 }
 ```
 
+</details>
+
 ---
 
 ## Build
@@ -315,6 +449,8 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/ARxxxxxx
 ```bash
 ./gradlew clean build
 ```
+
+The built plugin JAR will be in `plugin/build/libs/`.
 
 ---
 

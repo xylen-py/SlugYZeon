@@ -7,6 +7,7 @@ import com.slugyzeon.plugin.gaana.GaanaAudioSourceManager;
 import com.slugyzeon.plugin.instagram.InstagramAudioSourceManager;
 import com.slugyzeon.plugin.lastfm.LastFmAudioSourceManager;
 import com.slugyzeon.plugin.pandora.PandoraAudioSourceManager;
+import com.slugyzeon.plugin.spotify.SpotifyAudioSourceManager;
 import dev.arbjerg.lavalink.api.AudioPlayerManagerConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +29,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private InstagramAudioSourceManager instagram;
     private LastFmAudioSourceManager lastFm;
     private PandoraAudioSourceManager pandora;
+    private SpotifyAudioSourceManager spotify;
 
     public SlugYZeonPlugin(
             SlugYZeonSourcesConfig sourcesConfig,
@@ -35,7 +37,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             AmazonMusicConfig amazonMusicConfig,
             InstagramConfig instagramConfig,
             LastFmConfig lastFmConfig,
-            PandoraConfig pandoraConfig) {
+            PandoraConfig pandoraConfig,
+            SlugYZeonSpotifyConfig spotifyConfig) {
         log.info("Loading SlugYZeoN plugin...");
 
         if (sourcesConfig.isGaana()) {
@@ -62,7 +65,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (sourcesConfig.isLastfm()) {
             String apiKey = lastFmConfig.getApiKey();
             if (apiKey == null || apiKey.isEmpty()) {
-                log.warn("Last.fm source disabled: no API key provided");
+                log.warn("Last.fm source disabled as no API key provided");
             } else {
                 this.lastFm = new LastFmAudioSourceManager(
                         apiKey,
@@ -80,6 +83,20 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     pandoraConfig.getCsrfToken(),
                     pandoraConfig.isPreferTokenApi(),
                     pandoraConfig.getSearchLimit(),
+                    unused -> manager);
+        }
+        if (sourcesConfig.isSpotify()) {
+            this.spotify = new SpotifyAudioSourceManager(
+                    DEFAULT_PROVIDERS,
+                    spotifyConfig.getClientId(),
+                    spotifyConfig.getClientSecret(),
+                    spotifyConfig.getSpDc(),
+                    spotifyConfig.getCustomTokenEndpoint(),
+                    spotifyConfig.getCountryCode(),
+                    spotifyConfig.getPlaylistLoadLimit(),
+                    spotifyConfig.getAlbumLoadLimit(),
+                    spotifyConfig.isResolveArtistsInSearch(),
+                    spotifyConfig.isLocalFiles(),
                     unused -> manager);
         }
     }
@@ -107,6 +124,10 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (pandora != null) {
             log.info("Registering Pandora audio source manager...");
             manager.registerSourceManager(pandora);
+        }
+        if (spotify != null) {
+            log.info("Registering Spotify audio source manager...");
+            manager.registerSourceManager(spotify);
         }
 
         return manager;
