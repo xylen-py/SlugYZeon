@@ -299,8 +299,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             return AudioReference.NO_TRACK;
         }
 
-        return new SpotifyAudioPlaylist("Spotify Search: " + query, tracks,
-                ExtendedAudioPlaylist.Type.SEARCH, null, null, null, tracks.size());
+        return new BasicAudioPlaylist("Spotify Search: " + query, tracks, null, true);
     }
 
     private final java.util.Map<String, String> artistImageCache = new java.util.concurrent.ConcurrentHashMap<>();
