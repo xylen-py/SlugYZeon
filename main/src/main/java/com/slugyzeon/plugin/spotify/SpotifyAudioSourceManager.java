@@ -43,7 +43,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     public static final String API_BASE = "https://api.spotify.com/v1/";
     public static final int PLAYLIST_MAX_PAGE_ITEMS = 100;
     public static final int ALBUM_MAX_PAGE_ITEMS = 50;
-    private static final int MAX_API_RETRIES = 3;
+    private static final int MAX_API_RETRIES = 5;
+    private static final long MIN_RETRY_DELAY_MS = 5000;
 
     public static final Pattern URL_PATTERN = Pattern.compile(
             "(https?://)(www\\.)?open\\.spotify\\.com/(?:(?<region>[a-zA-Z-]+)/)?(?:user/(?<user>[a-zA-Z0-9-_]+)/)?(?<type>track|album|playlist|artist)/(?<identifier>[a-zA-Z0-9-_]+)");
@@ -193,13 +194,16 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 429) {
-                    long retryAfter = response.headers()
+                    long retryAfterSec = response.headers()
                             .firstValueAsLong("Retry-After")
-                            .orElse(2L + attempt);
-                    log.debug("Spotify rate limited (429), retrying in {}s ({}/{})",
-                            retryAfter, attempt + 1, MAX_API_RETRIES);
+                            .orElse(5L);
+                    long waitMs = Math.max(retryAfterSec * 1000L, MIN_RETRY_DELAY_MS);
+                    log.warn("Spotify rate limited (429) for {} — waiting {}ms (attempt {}/{})",
+                            url, waitMs, attempt + 1, MAX_API_RETRIES);
                     if (attempt < MAX_API_RETRIES) {
-                        Thread.sleep(retryAfter * 1000L);
+                        Thread.sleep(waitMs);
+                        tokenTracker.invalidateAnonymousToken();
+                        token = tokenTracker.getAnonymousAccessToken();
                         continue;
                     }
                     log.warn("Spotify rate limited after {} retries for {}", MAX_API_RETRIES, url);
@@ -207,8 +211,10 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 }
 
                 if (response.statusCode() == 401) {
-                    log.debug("Spotify 401, refreshing token and retrying ({}/{})", attempt + 1, MAX_API_RETRIES);
+                    log.debug("Spotify 401 for {} — refreshing token (attempt {}/{})", url, attempt + 1,
+                            MAX_API_RETRIES);
                     if (attempt < MAX_API_RETRIES) {
+                        tokenTracker.invalidateAnonymousToken();
                         token = tokenTracker.getAnonymousAccessToken();
                         continue;
                     }

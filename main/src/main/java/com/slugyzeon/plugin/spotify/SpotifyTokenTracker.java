@@ -118,6 +118,13 @@ public class SpotifyTokenTracker {
         return this.accountAccessToken;
     }
 
+    public void invalidateAnonymousToken() {
+        synchronized (this) {
+            this.anonymousAccessToken = null;
+            this.anonymousExpires = null;
+        }
+    }
+
     private boolean isExpired(String token, Instant expires) {
         return token == null || expires == null || expires.isBefore(Instant.now());
     }
