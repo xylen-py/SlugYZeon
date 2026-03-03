@@ -67,11 +67,11 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             .build();
 
     public SpotifyAudioSourceManager(String[] providers, String clientId, String clientSecret,
-            String spDc, String customTokenEndpoint, String countryCode, int playlistPageLimit,
+            String spDc, String nuanceUrl, String countryCode, int playlistPageLimit,
             int albumPageLimit, boolean resolveArtistsInSearch, boolean localFiles,
             Function<Void, AudioPlayerManager> manager) {
         super(manager, new DefaultMirroringAudioTrackResolver(providers));
-        this.tokenTracker = new SpotifyTokenTracker(clientId, clientSecret, spDc, customTokenEndpoint);
+        this.tokenTracker = new SpotifyTokenTracker(clientId, clientSecret, spDc, nuanceUrl);
         this.countryCode = (countryCode == null || countryCode.isEmpty()) ? "US" : countryCode;
         this.playlistPageLimit = playlistPageLimit > 0 ? playlistPageLimit : 6;
         this.albumPageLimit = albumPageLimit > 0 ? albumPageLimit : 6;

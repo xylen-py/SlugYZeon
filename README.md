@@ -88,7 +88,7 @@ plugins:
       clientSecret: ""
       spDc: ""
       countryCode: "US"
-      customTokenEndpoint: "https://spotify-gettoken.vercel.app/api/token"
+      nuanceUrl: ""
       playlistLoadLimit: 6
       albumLoadLimit: 6
       resolveArtistsInSearch: true
@@ -118,7 +118,7 @@ Pandora uses a two-tier token strategy: the token API endpoint provides quick au
 | `clientSecret` | `""` | Optional Spotify OAuth client secret |
 | `spDc` | `""` | Optional `sp_dc` cookie for account-level features |
 | `countryCode` | `US` | Country code for regional content / artist top tracks |
-| `customTokenEndpoint` | `""` | Custom token API URL (overrides TOTP generation) |
+| `nuanceUrl` | `""` | Custom nuance JSON URL for TOTP secrets (default uses built-in URL) |
 | `playlistLoadLimit` | `6` | Max playlist pages to load (100 tracks per page) |
 | `albumLoadLimit` | `6` | Max album pages to load (50 tracks per page) |
 | `resolveArtistsInSearch` | `true` | Batch-fetch artist images when searching tracks |
@@ -126,11 +126,9 @@ Pandora uses a two-tier token strategy: the token API endpoint provides quick au
 
 **Token Priority:**
 1. **Client Credentials** — If `clientId` and `clientSecret` are set, OAuth token is used first
-2. **Custom Token API** — If `customTokenEndpoint` is set, that endpoint is called
-3. **TOTP Generation** — Scrapes Spotify homepage JS for secret, generates HMAC-SHA1 TOTP
-4. **Built-in Free API** — Falls back to `https://spotify-gettoken.vercel.app/api/token`
+2. **TOTP Generation** — Fetches Base32-encoded secret from nuance endpoint, syncs with Spotify server time, generates RFC 6238 TOTP
 
-> **Note:** Spotify works entirely free without any credentials. All config fields are optional. Set `spotify: true` under sources to enable it.
+> **Note:** Spotify works entirely free without any credentials. All config fields are optional. The plugin auto-generates tokens using TOTP. Set `spotify: true` under sources to enable.
 
 </details>
 

@@ -91,7 +91,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     spotifyConfig.getClientId(),
                     spotifyConfig.getClientSecret(),
                     spotifyConfig.getSpDc(),
-                    spotifyConfig.getCustomTokenEndpoint(),
+                    spotifyConfig.getNuanceUrl(),
                     spotifyConfig.getCountryCode(),
                     spotifyConfig.getPlaylistLoadLimit(),
                     spotifyConfig.getAlbumLoadLimit(),

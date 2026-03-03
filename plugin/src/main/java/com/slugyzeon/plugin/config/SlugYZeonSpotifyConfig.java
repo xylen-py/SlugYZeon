@@ -11,7 +11,7 @@ public class SlugYZeonSpotifyConfig {
     private String clientSecret = "";
     private String spDc = "";
     private String countryCode = "US";
-    private String customTokenEndpoint = "";
+    private String nuanceUrl = "";
     private int playlistLoadLimit = 6;
     private int albumLoadLimit = 6;
     private boolean resolveArtistsInSearch = true;
@@ -49,12 +49,12 @@ public class SlugYZeonSpotifyConfig {
         this.countryCode = countryCode;
     }
 
-    public String getCustomTokenEndpoint() {
-        return customTokenEndpoint;
+    public String getNuanceUrl() {
+        return nuanceUrl;
     }
 
-    public void setCustomTokenEndpoint(String customTokenEndpoint) {
-        this.customTokenEndpoint = customTokenEndpoint;
+    public void setNuanceUrl(String nuanceUrl) {
+        this.nuanceUrl = nuanceUrl;
     }
 
     public int getPlaylistLoadLimit() {
