@@ -391,7 +391,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String albumId = extractIdFromUri(album.path("uri").asText(""));
         String albumUrl = "https://open.spotify.com/album/" + albumId;
         String albumArtwork = album.path("coverArt").path("sources").path(0).path("url").asText(null);
-        String albumArtist = album.path("artists").path("items").path(0).path("profile").path("name").asText("Unknown");
+        String albumArtist = getGqlArtistName(album);
         String artistArtwork = album.path("artists").path("items").path(0)
                 .path("visuals").path("avatarImage").path("sources").path(0).path("url").asText(null);
 
@@ -420,8 +420,9 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                     continue;
 
                 long duration = trackData.path("duration").path("totalMilliseconds").asLong(0);
-                String trackArtist = trackData.path("artists").path("items").path(0)
-                        .path("profile").path("name").asText(albumArtist);
+                String trackArtist = getGqlArtistName(trackData);
+                if ("Unknown".equals(trackArtist))
+                    trackArtist = albumArtist;
                 String trackUrl = "https://open.spotify.com/track/" + trackId;
                 String artistUrl = null;
                 String firstArtistUri = trackData.path("artists").path("items").path(0).path("uri").asText(null);
@@ -583,8 +584,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
         long duration = trackData.path("duration").path("totalMilliseconds").asLong(0);
 
-        String artist = trackData.path("artists").path("items").path(0)
-                .path("profile").path("name").asText("Unknown");
+        String artist = getGqlArtistName(trackData);
         String artistUri = trackData.path("artists").path("items").path(0).path("uri").asText(null);
         String artistUrl = artistUri != null
                 ? "https://open.spotify.com/artist/" + extractIdFromUri(artistUri)
@@ -646,6 +646,33 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 isrc);
 
         return new SpotifyAudioTrack(trackInfo, albumName, albumUrl, artistUrl, null, previewUrl, preview, this);
+    }
+
+    private String getGqlArtistName(JsonNode node) {
+        if (node == null || node.isMissingNode())
+            return "Unknown";
+
+        String name = node.path("artists").path("items").path(0).path("profile").path("name").asText(null);
+        if (name != null && !name.isEmpty())
+            return name;
+
+        name = node.path("artists").path("items").path(0).path("name").asText(null);
+        if (name != null && !name.isEmpty())
+            return name;
+
+        name = node.path("firstArtist").path("items").path(0).path("profile").path("name").asText(null);
+        if (name != null && !name.isEmpty())
+            return name;
+
+        name = node.path("artists").path(0).path("profile").path("name").asText(null);
+        if (name != null && !name.isEmpty())
+            return name;
+
+        name = node.path("artists").path(0).path("name").asText(null);
+        if (name != null && !name.isEmpty())
+            return name;
+
+        return "Unknown";
     }
 
     private String extractIdFromUri(String uri) {
