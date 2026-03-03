@@ -28,13 +28,15 @@ public class SpotifyTokenTracker {
 
     private static final Logger log = LoggerFactory.getLogger(SpotifyTokenTracker.class);
 
-    private static final String DEFAULT_TOKEN_API = "https://spotify-gettoken.vercel.app/api/token";
     private static final String SPOTIFY_ACCOUNTS_TOKEN = "https://accounts.spotify.com/api/token";
+    private static final String SPOTIFY_TOKEN_URL = "https://open.spotify.com/api/token";
     private static final String SPOTIFY_HOMEPAGE = "https://open.spotify.com/";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36";
 
-    private static final Pattern SECRET_PATTERN = Pattern.compile("\"secret\":\\[([\\d]+(?:,[\\d]+)+)]");
     private static final Pattern SCRIPT_PATTERN = Pattern.compile("src=\"([^\"]*mobile-web-player[^\"]*\\.js)\"");
+    private static final Pattern SECRET_ARRAY_PATTERN = Pattern
+            .compile("\\[\\{secret:['\"]([^'\"]+)['\"],version:(\\d+)\\}");
+    private static final Pattern SECRET_NUMBER_ARRAY_PATTERN = Pattern.compile("\"secret\":\\[([\\d]+(?:,[\\d]+)+)]");
 
     private static final int MAX_RETRIES = 2;
     private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 120;
@@ -45,10 +47,10 @@ public class SpotifyTokenTracker {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
-    private String clientId;
-    private String clientSecret;
-    private String spDc;
-    private String customTokenEndpoint;
+    private final String clientId;
+    private final String clientSecret;
+    private final String spDc;
+    private final String customTokenEndpoint;
 
     private volatile String accessToken;
     private volatile Instant accessTokenExpires;
@@ -59,7 +61,8 @@ public class SpotifyTokenTracker {
     private volatile String accountAccessToken;
     private volatile Instant accountAccessTokenExpires;
 
-    private volatile byte[] cachedSecret;
+    private volatile String cachedTotpSecret;
+    private volatile int cachedTotpVersion;
     private volatile Instant cachedSecretExpires;
 
     public SpotifyTokenTracker(String clientId, String clientSecret, String spDc, String customTokenEndpoint) {
@@ -91,7 +94,6 @@ public class SpotifyTokenTracker {
         if (isExpired(this.accessToken, this.accessTokenExpires)) {
             synchronized (this) {
                 if (isExpired(this.accessToken, this.accessTokenExpires)) {
-                    log.debug("Spotify access token expired, refreshing via client credentials");
                     refreshAccessToken();
                 }
             }
@@ -103,7 +105,6 @@ public class SpotifyTokenTracker {
         if (isExpired(this.anonymousAccessToken, this.anonymousExpires)) {
             synchronized (this) {
                 if (isExpired(this.anonymousAccessToken, this.anonymousExpires)) {
-                    log.debug("Spotify anonymous token expired, refreshing");
                     refreshAnonymousAccessToken();
                 }
             }
@@ -118,7 +119,6 @@ public class SpotifyTokenTracker {
         if (isExpired(this.accountAccessToken, this.accountAccessTokenExpires)) {
             synchronized (this) {
                 if (isExpired(this.accountAccessToken, this.accountAccessTokenExpires)) {
-                    log.debug("Spotify account token expired, refreshing via sp_dc");
                     refreshAccountAccessToken();
                 }
             }
@@ -147,8 +147,6 @@ public class SpotifyTokenTracker {
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() != 200) {
                     if (attempt < MAX_RETRIES) {
-                        log.debug("Spotify OAuth returned {}, retrying ({}/{})", response.statusCode(), attempt + 1,
-                                MAX_RETRIES);
                         Thread.sleep(500L * (attempt + 1));
                         continue;
                     }
@@ -156,15 +154,11 @@ public class SpotifyTokenTracker {
                 }
 
                 JsonNode json = mapper.readTree(response.body());
-                if (json.has("error") && !json.get("error").isNull()) {
-                    throw new IOException("Spotify OAuth error: " + json.get("error").asText());
-                }
-
                 this.accessToken = json.get("access_token").asText();
-                long expiresIn = json.has("expires_in") ? json.get("expires_in").asLong(3600) : 3600;
+                long expiresIn = json.path("expires_in").asLong(3600);
                 this.accessTokenExpires = Instant.now()
                         .plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
-                log.debug("Spotify access token refreshed via client credentials (expires in {}s)", expiresIn);
+                log.info("Spotify access token refreshed via client credentials (expires in {}s)", expiresIn);
                 return;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -176,90 +170,85 @@ public class SpotifyTokenTracker {
     private void refreshAnonymousAccessToken() throws IOException {
         IOException lastException = null;
 
-        String tokenUrl = generateGetAccessTokenURL();
         try {
-            fetchAndSetAnonymousToken(tokenUrl);
+            fetchTokenViaTOTP();
             return;
         } catch (IOException e) {
             lastException = e;
-            log.debug("Primary token URL failed ({}): {}", tokenUrl.contains("totp") ? "TOTP" : "custom",
-                    e.getMessage());
-        }
-
-        if (customTokenEndpoint == null || customTokenEndpoint.isBlank()) {
-            try {
-                fetchAndSetAnonymousToken(DEFAULT_TOKEN_API);
-                return;
-            } catch (IOException e) {
-                lastException = e;
-                log.debug("Default token API failed: {}", e.getMessage());
-            }
-        }
-
-        String totpUrl = tryGenerateTotpUrl();
-        if (totpUrl != null && !totpUrl.equals(tokenUrl)) {
-            try {
-                fetchAndSetAnonymousToken(totpUrl);
-                return;
-            } catch (IOException e) {
-                lastException = e;
-                log.debug("TOTP fallback failed: {}", e.getMessage());
-            }
+            log.debug("TOTP token failed: {}", e.getMessage());
         }
 
         try {
-            fetchAndSetAnonymousToken(DEFAULT_TOKEN_API);
+            fetchTokenDirect();
             return;
         } catch (IOException e) {
             lastException = e;
-            log.debug("Final token API fallback failed: {}", e.getMessage());
+            log.debug("Direct token failed: {}", e.getMessage());
         }
 
-        throw new IOException("All Spotify anonymous token methods failed", lastException);
+        if (customTokenEndpoint != null && !customTokenEndpoint.isBlank()) {
+            try {
+                fetchTokenFromEndpoint(customTokenEndpoint);
+                return;
+            } catch (IOException e) {
+                lastException = e;
+                log.debug("Custom endpoint token failed: {}", e.getMessage());
+            }
+        }
+
+        throw new IOException("All Spotify token methods failed", lastException);
     }
 
-    private void fetchAndSetAnonymousToken(String tokenUrl) throws IOException {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(tokenUrl))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("User-Agent", USER_AGENT)
-                    .header("App-Platform", "WebPlayer")
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new IOException("Token endpoint returned status " + response.statusCode());
-            }
-
-            JsonNode json = mapper.readTree(response.body());
-
-            if (json.has("error") && !json.get("error").isNull()) {
-                throw new IOException("Token error: " + json.get("error").asText());
-            }
-
-            String token = extractTokenFromJson(json);
-            if (token == null || token.isEmpty()) {
-                throw new IOException("No access token in response from " + tokenUrl);
-            }
-
-            this.anonymousAccessToken = token;
-            this.anonymousExpires = extractExpiry(json);
-
-            log.debug("Spotify anonymous token refreshed via {}", describeUrl(tokenUrl));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while fetching anonymous token", e);
+    private void fetchTokenViaTOTP() throws IOException {
+        String totpSecret = getOrFetchTotpSecret();
+        if (totpSecret == null) {
+            throw new IOException("Could not extract TOTP secret from Spotify");
         }
+
+        String hexSecret = transformSecretToHex(totpSecret);
+        String totp = generateTOTP(hexSecret, 30, 6);
+        long ts = System.currentTimeMillis();
+
+        String url = SPOTIFY_TOKEN_URL + "?reason=init&productType=web-player&totp=" + totp
+                + "&totpVer=" + cachedTotpVersion + "&ts=" + ts;
+
+        fetchAndSetToken(url, null);
+        log.info("Spotify anonymous token refreshed via TOTP (version {})", cachedTotpVersion);
+    }
+
+    private void fetchTokenDirect() throws IOException {
+        String url = SPOTIFY_TOKEN_URL + "?reason=init&productType=web-player";
+        fetchAndSetToken(url, null);
+        log.info("Spotify anonymous token refreshed via direct open.spotify.com");
+    }
+
+    private void fetchTokenFromEndpoint(String endpoint) throws IOException {
+        fetchAndSetToken(endpoint, null);
+        log.info("Spotify anonymous token refreshed via custom endpoint");
     }
 
     private void refreshAccountAccessToken() throws IOException {
-        String tokenUrl = generateGetAccessTokenURL();
+        String totpSecret = null;
+        String url;
+
+        try {
+            totpSecret = getOrFetchTotpSecret();
+        } catch (IOException ignored) {
+        }
+
+        if (totpSecret != null) {
+            String hexSecret = transformSecretToHex(totpSecret);
+            String totp = generateTOTP(hexSecret, 30, 6);
+            long ts = System.currentTimeMillis();
+            url = SPOTIFY_TOKEN_URL + "?reason=init&productType=web-player&totp=" + totp
+                    + "&totpVer=" + cachedTotpVersion + "&ts=" + ts;
+        } else {
+            url = SPOTIFY_TOKEN_URL + "?reason=init&productType=web-player";
+        }
 
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(tokenUrl))
+                    .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(15))
                     .header("User-Agent", USER_AGENT)
                     .header("App-Platform", "WebPlayer")
@@ -273,103 +262,93 @@ public class SpotifyTokenTracker {
             }
 
             JsonNode json = mapper.readTree(response.body());
-            if (json.has("error") && !json.get("error").isNull()) {
-                throw new IOException("Spotify account token error: " + json.get("error").asText());
-            }
-
-            String token = extractTokenFromJson(json);
-            if (token == null || token.isEmpty()) {
-                throw new IOException("No account access token from Spotify");
+            String token = extractToken(json);
+            if (token == null) {
+                throw new IOException("No account access token in response");
             }
 
             this.accountAccessToken = token;
             this.accountAccessTokenExpires = extractExpiry(json);
-            log.debug("Spotify account token refreshed via sp_dc");
+            log.info("Spotify account token refreshed via sp_dc");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while refreshing Spotify account token", e);
         }
     }
 
-    private String extractTokenFromJson(JsonNode json) {
-        if (json.has("accessToken") && !json.get("accessToken").isNull()) {
-            return json.get("accessToken").asText();
+    private void fetchAndSetToken(String url, String cookie) throws IOException {
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("User-Agent", USER_AGENT)
+                    .header("App-Platform", "WebPlayer")
+                    .GET();
+
+            if (cookie != null) {
+                builder.header("Cookie", cookie);
+            }
+
+            HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IOException("Token endpoint returned " + response.statusCode() + " for " + url);
+            }
+
+            JsonNode json = mapper.readTree(response.body());
+            String token = extractToken(json);
+            if (token == null) {
+                throw new IOException("No access token in response from " + url);
+            }
+
+            boolean isAnonymous = json.path("isAnonymous").asBoolean(true);
+            Instant expiry = extractExpiry(json);
+
+            if (Instant.now().isAfter(expiry)) {
+                throw new IOException("Token from " + url + " is already expired");
+            }
+
+            this.anonymousAccessToken = token;
+            this.anonymousExpires = expiry;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while fetching token", e);
         }
-        if (json.has("access_token") && !json.get("access_token").isNull()) {
-            return json.get("access_token").asText();
-        }
-        return null;
+    }
+
+    private String extractToken(JsonNode json) {
+        String token = json.path("accessToken").asText(null);
+        if (token != null)
+            return token;
+        return json.path("access_token").asText(null);
     }
 
     private Instant extractExpiry(JsonNode json) {
-        if (json.has("accessTokenExpirationTimestampMs")) {
-            long expiresMs = json.get("accessTokenExpirationTimestampMs").asLong(0);
-            if (expiresMs > 0) {
-                return Instant.ofEpochMilli(expiresMs).minusSeconds(TOKEN_EXPIRY_BUFFER_SECONDS);
-            }
+        long expiresMs = json.path("accessTokenExpirationTimestampMs").asLong(0);
+        if (expiresMs > 0) {
+            return Instant.ofEpochMilli(expiresMs).minusSeconds(TOKEN_EXPIRY_BUFFER_SECONDS);
         }
-        if (json.has("expires_in")) {
-            long expiresIn = json.get("expires_in").asLong(3600);
-            return Instant.now().plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
-        }
-        return Instant.now().plusSeconds(3600 - TOKEN_EXPIRY_BUFFER_SECONDS);
+        long expiresIn = json.path("expires_in").asLong(3600);
+        return Instant.now().plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
     }
 
-    private String describeUrl(String url) {
-        if (url.contains("totp"))
-            return "TOTP";
-        if (url.contains("spotify-gettoken"))
-            return "free token API";
-        if (url.contains("open.spotify.com"))
-            return "open.spotify.com";
-        return "custom endpoint";
+    private String getOrFetchTotpSecret() throws IOException {
+        if (cachedTotpSecret != null && cachedSecretExpires != null && cachedSecretExpires.isAfter(Instant.now())) {
+            return cachedTotpSecret;
+        }
+
+        String[] result = scrapeSecretFromSpotify();
+        if (result != null) {
+            cachedTotpSecret = result[0];
+            cachedTotpVersion = Integer.parseInt(result[1]);
+            cachedSecretExpires = Instant.now().plusSeconds(600);
+            log.debug("Scraped TOTP secret (version {}, length {})", cachedTotpVersion, cachedTotpSecret.length());
+            return cachedTotpSecret;
+        }
+
+        throw new IOException("Could not scrape TOTP secret from Spotify");
     }
 
-    private String generateGetAccessTokenURL() throws IOException {
-        if (this.customTokenEndpoint != null && !this.customTokenEndpoint.isBlank()) {
-            return this.customTokenEndpoint;
-        }
-
-        String totpUrl = tryGenerateTotpUrl();
-        if (totpUrl != null) {
-            return totpUrl;
-        }
-
-        return DEFAULT_TOKEN_API;
-    }
-
-    private String tryGenerateTotpUrl() {
-        try {
-            byte[] secret = getOrFetchSecret();
-            if (secret != null) {
-                byte[] transformedSecret = convertArrayToTransformedByteArray(secret);
-                String hexSecret = toHexString(transformedSecret);
-                String totp = generateTOTP(hexSecret, 30, 6);
-                long ts = System.currentTimeMillis();
-                return "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=" + totp
-                        + "&totpVer=7&ts=" + ts;
-            }
-        } catch (Exception e) {
-            log.debug("TOTP URL generation failed: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    private byte[] getOrFetchSecret() throws IOException {
-        if (this.cachedSecret != null && this.cachedSecretExpires != null
-                && this.cachedSecretExpires.isAfter(Instant.now())) {
-            return this.cachedSecret;
-        }
-
-        byte[] secret = requestSecret();
-        if (secret != null) {
-            this.cachedSecret = secret;
-            this.cachedSecretExpires = Instant.now().plusSeconds(600);
-        }
-        return secret;
-    }
-
-    private byte[] requestSecret() throws IOException {
+    private String[] scrapeSecretFromSpotify() throws IOException {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(SPOTIFY_HOMEPAGE))
@@ -380,7 +359,6 @@ public class SpotifyTokenTracker {
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                log.debug("Spotify homepage returned status {}", response.statusCode());
                 return null;
             }
 
@@ -394,25 +372,21 @@ public class SpotifyTokenTracker {
                 }
             }
 
-            if (scriptUrls.isEmpty()) {
-                return null;
-            }
-
             for (String scriptUrl : scriptUrls) {
-                byte[] secret = extractSecret(scriptUrl);
-                if (secret != null) {
-                    return secret;
+                String[] result = extractSecretFromScript(scriptUrl);
+                if (result != null) {
+                    return result;
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while requesting secret", e);
+            throw new IOException("Interrupted while scraping Spotify", e);
         }
 
         return null;
     }
 
-    private byte[] extractSecret(String scriptUrl) throws IOException {
+    private String[] extractSecretFromScript(String scriptUrl) throws IOException {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(scriptUrl))
@@ -426,14 +400,26 @@ public class SpotifyTokenTracker {
                 return null;
             }
 
-            Matcher matcher = SECRET_PATTERN.matcher(response.body());
-            if (matcher.find()) {
-                String[] parts = matcher.group(1).split(",");
-                byte[] secretBytes = new byte[parts.length];
-                for (int i = 0; i < parts.length; i++) {
-                    secretBytes[i] = (byte) Integer.parseInt(parts[i].trim());
+            String js = response.body();
+
+            Matcher stringMatcher = SECRET_ARRAY_PATTERN.matcher(js);
+            if (stringMatcher.find()) {
+                String secret = stringMatcher.group(1);
+                String version = stringMatcher.group(2);
+                log.debug("Found string TOTP secret (version {}) from {}", version, scriptUrl);
+                return new String[] { secret, version };
+            }
+
+            Matcher numberMatcher = SECRET_NUMBER_ARRAY_PATTERN.matcher(js);
+            if (numberMatcher.find()) {
+                String numbersStr = numberMatcher.group(1);
+                String[] parts = numbersStr.split(",");
+                StringBuilder sb = new StringBuilder();
+                for (String part : parts) {
+                    sb.append((char) Integer.parseInt(part.trim()));
                 }
-                return secretBytes;
+                log.debug("Found number array TOTP secret from {}", scriptUrl);
+                return new String[] { sb.toString(), "5" };
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -443,14 +429,33 @@ public class SpotifyTokenTracker {
         return null;
     }
 
-    private static String generateTOTP(String secret, int period, int digits) {
+    private String transformSecretToHex(String secret) {
+        int[] transformed = new int[secret.length()];
+        for (int i = 0; i < secret.length(); i++) {
+            transformed[i] = secret.charAt(i) ^ ((i % 33) + 9);
+        }
+
+        StringBuilder joined = new StringBuilder();
+        for (int val : transformed) {
+            joined.append(val);
+        }
+
+        byte[] utf8Bytes = joined.toString().getBytes(StandardCharsets.UTF_8);
+        StringBuilder hex = new StringBuilder();
+        for (byte b : utf8Bytes) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    private static String generateTOTP(String hexSecret, int period, int digits) {
         long time = System.currentTimeMillis() / 1000 / period;
         ByteBuffer buffer = ByteBuffer.allocate(8);
         buffer.putLong(time);
         byte[] timeBytes = buffer.array();
 
         try {
-            SecretKeySpec keySpec = new SecretKeySpec(hexStringToByteArray(secret), "HmacSHA1");
+            SecretKeySpec keySpec = new SecretKeySpec(hexStringToByteArray(hexSecret), "HmacSHA1");
             Mac mac = Mac.getInstance("HmacSHA1");
             mac.init(keySpec);
             byte[] hash = mac.doFinal(timeBytes);
@@ -460,29 +465,8 @@ public class SpotifyTokenTracker {
             int otp = binary % (int) Math.pow(10, digits);
             return String.format("%0" + digits + "d", otp);
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
-            throw new RuntimeException("Error generating TOTP", e);
+            throw new RuntimeException("TOTP generation failed", e);
         }
-    }
-
-    private static byte[] convertArrayToTransformedByteArray(byte[] array) {
-        byte[] transformed = new byte[array.length];
-        for (int i = 0; i < array.length; i++) {
-            transformed[i] = (byte) (array[i] ^ ((i % 33) + 9));
-        }
-        return transformed;
-    }
-
-    private static String toHexString(byte[] transformed) {
-        StringBuilder joinedString = new StringBuilder();
-        for (byte b : transformed) {
-            joinedString.append(b);
-        }
-        byte[] utf8Bytes = joinedString.toString().getBytes(StandardCharsets.UTF_8);
-        StringBuilder hexString = new StringBuilder();
-        for (byte b : utf8Bytes) {
-            hexString.append(String.format("%02x", b));
-        }
-        return hexString.toString();
     }
 
     private static byte[] hexStringToByteArray(String s) {

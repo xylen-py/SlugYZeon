@@ -22,9 +22,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
@@ -35,6 +39,11 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     public static final String RECOMMENDATIONS_PREFIX = "sprec:";
     public static final String PREVIEW_PREFIX = "spprev:";
     public static final long PREVIEW_LENGTH = 30000;
+    public static final String SHARE_URL = "https://spotify.link/";
+    public static final String API_BASE = "https://api.spotify.com/v1/";
+    public static final int PLAYLIST_MAX_PAGE_ITEMS = 100;
+    public static final int ALBUM_MAX_PAGE_ITEMS = 50;
+    private static final int MAX_API_RETRIES = 3;
 
     public static final Pattern URL_PATTERN = Pattern.compile(
             "(https?://)(www\\.)?open\\.spotify\\.com/(?:(?<region>[a-zA-Z-]+)/)?(?:user/(?<user>[a-zA-Z0-9-_]+)/)?(?<type>track|album|playlist|artist)/(?<identifier>[a-zA-Z0-9-_]+)");
@@ -42,20 +51,15 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     public static final Pattern RADIO_MIX_QUERY_PATTERN = Pattern.compile(
             "mix:(?<seedType>album|artist|track|isrc):(?<seed>[a-zA-Z0-9-_]+)");
 
-    public static final String SHARE_URL = "https://spotify.link/";
-    public static final String API_BASE = "https://api.spotify.com/v1/";
-    public static final int PLAYLIST_MAX_PAGE_ITEMS = 100;
-    public static final int ALBUM_MAX_PAGE_ITEMS = 50;
-
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36";
 
     private final SpotifyTokenTracker tokenTracker;
     private final String countryCode;
     private final int playlistPageLimit;
     private final int albumPageLimit;
-    private boolean resolveArtistsInSearch;
-    private boolean localFiles;
-    private boolean preferAnonymousToken;
+    private final boolean resolveArtistsInSearch;
+    private final boolean localFiles;
+    private final Map<String, String> artistImageCache = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -73,7 +77,6 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         this.albumPageLimit = albumPageLimit > 0 ? albumPageLimit : 6;
         this.resolveArtistsInSearch = resolveArtistsInSearch;
         this.localFiles = localFiles;
-        this.preferAnonymousToken = !tokenTracker.hasValidCredentials();
     }
 
     @Override
@@ -126,9 +129,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             }
 
             String id = matcher.group("identifier");
-            String type = matcher.group("type");
-
-            switch (type) {
+            switch (matcher.group("type")) {
                 case "track":
                     return getTrack(id, preview);
                 case "album":
@@ -164,20 +165,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             }
 
             if (location != null && location.startsWith("https://open.spotify.com/")) {
-                Matcher matcher = URL_PATTERN.matcher(location);
-                if (matcher.find()) {
-                    String id = matcher.group("identifier");
-                    switch (matcher.group("type")) {
-                        case "track":
-                            return getTrack(id, preview);
-                        case "album":
-                            return getAlbum(id, preview);
-                        case "playlist":
-                            return getPlaylist(id, preview);
-                        case "artist":
-                            return getArtist(id, preview);
-                    }
-                }
+                return loadItem(null, new AudioReference(location, null));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -185,13 +173,13 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return AudioReference.NO_TRACK;
     }
 
-    private static final int MAX_API_RETRIES = 3;
+    private String getToken() throws IOException {
+        return tokenTracker.getAccessToken(false);
+    }
 
-    private JsonNode getJson(String url, boolean anonymous) throws IOException {
+    private JsonNode getJson(String url) throws IOException {
         try {
-            String token = anonymous
-                    ? tokenTracker.getAnonymousAccessToken()
-                    : tokenTracker.getAccessToken(this.preferAnonymousToken);
+            String token = getToken();
 
             for (int attempt = 0; attempt <= MAX_API_RETRIES; attempt++) {
                 HttpRequest request = HttpRequest.newBuilder()
@@ -208,24 +196,27 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                     long retryAfter = response.headers()
                             .firstValueAsLong("Retry-After")
                             .orElse(2L + attempt);
-                    log.debug("Spotify API rate limited (429) for {}, retrying in {}s ({}/{})",
-                            url, retryAfter, attempt + 1, MAX_API_RETRIES);
+                    log.debug("Spotify rate limited (429), retrying in {}s ({}/{})",
+                            retryAfter, attempt + 1, MAX_API_RETRIES);
                     if (attempt < MAX_API_RETRIES) {
                         Thread.sleep(retryAfter * 1000L);
                         continue;
                     }
-                    log.warn("Spotify API rate limited after {} retries for {}", MAX_API_RETRIES, url);
+                    log.warn("Spotify rate limited after {} retries for {}", MAX_API_RETRIES, url);
                     return null;
                 }
 
-                if (response.statusCode() == 401 && !anonymous) {
-                    log.debug("Spotify API returned 401, retrying with anonymous token");
-                    token = tokenTracker.getAnonymousAccessToken();
-                    continue;
+                if (response.statusCode() == 401) {
+                    log.debug("Spotify 401, refreshing token and retrying ({}/{})", attempt + 1, MAX_API_RETRIES);
+                    if (attempt < MAX_API_RETRIES) {
+                        token = tokenTracker.getAnonymousAccessToken();
+                        continue;
+                    }
+                    return null;
                 }
 
                 if (response.statusCode() != 200) {
-                    log.warn("Spotify API returned status {} for {}", response.statusCode(), url);
+                    log.warn("Spotify API status {} for {}", response.statusCode(), url);
                     return null;
                 }
 
@@ -234,77 +225,37 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             return null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while fetching from Spotify API", e);
+            throw new IOException("Interrupted during Spotify API call", e);
         }
     }
 
     public AudioItem getTrack(String id, boolean preview) throws IOException {
-        JsonNode json = getJson(API_BASE + "tracks/" + id, false);
-        if (json == null || (json.has("error") && !json.get("error").isNull())) {
+        JsonNode json = getJson(API_BASE + "tracks/" + id);
+        if (json == null || hasError(json)) {
             return AudioReference.NO_TRACK;
         }
 
-        resolveArtistImages(json);
-        return parseTrack(json, preview);
+        String artistArtwork = resolveFirstArtistArtwork(json);
+        return parseTrackWithArtistArtwork(json, artistArtwork, preview);
     }
 
     public AudioItem getSearch(String query, boolean preview) throws IOException {
         JsonNode json = getJson(API_BASE + "search?q=" + URLEncoder.encode(query, StandardCharsets.UTF_8)
-                + "&type=track", false);
+                + "&type=track");
         if (json == null) {
             return AudioReference.NO_TRACK;
         }
 
-        JsonNode tracksNode = json.get("tracks");
-        if (tracksNode == null || !tracksNode.has("items")) {
-            return AudioReference.NO_TRACK;
-        }
-
-        JsonNode items = tracksNode.get("items");
+        JsonNode items = json.path("tracks").path("items");
         if (!items.isArray() || items.size() == 0) {
             return AudioReference.NO_TRACK;
         }
 
         if (this.resolveArtistsInSearch) {
-            StringBuilder artistIds = new StringBuilder();
-            for (JsonNode trackNode : items) {
-                if (trackNode.has("artists") && trackNode.get("artists").isArray()
-                        && trackNode.get("artists").size() > 0) {
-                    String artistId = trackNode.get("artists").get(0).has("id")
-                            ? trackNode.get("artists").get(0).get("id").asText()
-                            : null;
-                    if (artistId != null) {
-                        if (artistIds.length() > 0)
-                            artistIds.append(",");
-                        artistIds.append(artistId);
-                    }
-                }
-            }
-
-            if (artistIds.length() > 0) {
-                JsonNode artistJsonResponse = getJson(API_BASE + "artists?ids=" + artistIds, false);
-                if (artistJsonResponse != null && artistJsonResponse.has("artists")) {
-                    artistImageCache.clear();
-                    for (JsonNode artist : artistJsonResponse.get("artists")) {
-                        if (artist != null && !artist.isNull() && artist.has("id")) {
-                            String img = getFirstImage(artist);
-                            if (img != null) {
-                                artistImageCache.put(artist.get("id").asText(), img);
-                            }
-                        }
-                    }
-                }
-            }
+            batchResolveArtistImages(items);
         }
 
-        List<AudioTrack> tracks = new ArrayList<>();
-        for (JsonNode trackNode : items) {
-            AudioTrack track = parseTrack(trackNode, preview);
-            if (track != null) {
-                tracks.add(track);
-            }
-        }
-
+        List<AudioTrack> tracks = parseTracks(items, preview);
         artistImageCache.clear();
 
         if (tracks.isEmpty()) {
@@ -314,23 +265,18 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return new BasicAudioPlaylist("Spotify Search: " + query, tracks, null, true);
     }
 
-    private final java.util.Map<String, String> artistImageCache = new java.util.concurrent.ConcurrentHashMap<>();
-
     public AudioItem getRecommendations(String query, boolean preview) throws IOException {
         Matcher mixMatcher = RADIO_MIX_QUERY_PATTERN.matcher(query);
         if (mixMatcher.find()) {
             String seedType = mixMatcher.group("seedType");
             String seed = mixMatcher.group("seed");
 
-            if (seedType.equals("isrc")) {
+            if ("isrc".equals(seedType)) {
                 AudioItem item = getSearch("isrc:" + seed, preview);
                 if (item == AudioReference.NO_TRACK) {
                     return AudioReference.NO_TRACK;
                 }
-                if (item instanceof AudioTrack) {
-                    seed = ((AudioTrack) item).getIdentifier();
-                    seedType = "track";
-                } else if (item instanceof AudioPlaylist) {
+                if (item instanceof AudioPlaylist) {
                     AudioPlaylist playlist = (AudioPlaylist) item;
                     if (!playlist.getTracks().isEmpty()) {
                         seed = playlist.getTracks().get(0).getIdentifier();
@@ -341,28 +287,20 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 }
             }
 
-            String seedParam = "seed_" + seedType + "s=" + seed;
-            query = seedParam;
+            query = "seed_" + seedType + "s=" + seed;
         }
 
-        JsonNode json = getJson(API_BASE + "recommendations?" + query, false);
-        if (json == null || !json.has("tracks")) {
+        JsonNode json = getJson(API_BASE + "recommendations?" + query);
+        if (json == null) {
             return AudioReference.NO_TRACK;
         }
 
         JsonNode tracksArray = json.get("tracks");
-        if (!tracksArray.isArray() || tracksArray.size() == 0) {
+        if (tracksArray == null || !tracksArray.isArray() || tracksArray.size() == 0) {
             return AudioReference.NO_TRACK;
         }
 
-        List<AudioTrack> tracks = new ArrayList<>();
-        for (JsonNode trackNode : tracksArray) {
-            AudioTrack track = parseTrack(trackNode, preview);
-            if (track != null) {
-                tracks.add(track);
-            }
-        }
-
+        List<AudioTrack> tracks = parseTracks(tracksArray, preview);
         if (tracks.isEmpty()) {
             return AudioReference.NO_TRACK;
         }
@@ -372,8 +310,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getAlbum(String id, boolean preview) throws IOException {
-        JsonNode albumJson = getJson(API_BASE + "albums/" + id, false);
-        if (albumJson == null || (albumJson.has("error") && !albumJson.get("error").isNull())) {
+        JsonNode albumJson = getJson(API_BASE + "albums/" + id);
+        if (albumJson == null || hasError(albumJson)) {
             return AudioReference.NO_TRACK;
         }
 
@@ -381,20 +319,9 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String albumUrl = getExternalUrl(albumJson);
         String albumArtwork = getFirstImage(albumJson);
         String albumArtist = getFirstArtistName(albumJson);
-        int totalTracks = albumJson.has("total_tracks") ? albumJson.get("total_tracks").asInt(0) : 0;
+        int totalTracks = albumJson.path("total_tracks").asInt(0);
 
-        String artistArtwork = null;
-        if (albumJson.has("artists") && albumJson.get("artists").isArray() && albumJson.get("artists").size() > 0) {
-            String artistId = albumJson.get("artists").get(0).has("id")
-                    ? albumJson.get("artists").get(0).get("id").asText()
-                    : null;
-            if (artistId != null) {
-                JsonNode artistJson = getJson(API_BASE + "artists/" + artistId, false);
-                if (artistJson != null) {
-                    artistArtwork = getFirstImage(artistJson);
-                }
-            }
-        }
+        String artistArtwork = resolveFirstArtistArtwork(albumJson);
 
         List<AudioTrack> tracks = new ArrayList<>();
         int offset = 0;
@@ -402,20 +329,25 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
         JsonNode page;
         do {
-            page = getJson(API_BASE + "albums/" + id + "/tracks?limit=" + ALBUM_MAX_PAGE_ITEMS + "&offset=" + offset,
-                    false);
+            page = getJson(API_BASE + "albums/" + id + "/tracks?limit=" + ALBUM_MAX_PAGE_ITEMS + "&offset=" + offset);
             if (page == null || !page.has("items"))
                 break;
 
-            for (JsonNode simpleTrack : page.get("items")) {
-                if (simpleTrack == null || !simpleTrack.has("id"))
-                    continue;
+            String trackIds = StreamSupport.stream(page.get("items").spliterator(), false)
+                    .filter(t -> t != null && t.has("id"))
+                    .map(t -> t.get("id").asText())
+                    .collect(Collectors.joining(","));
 
-                JsonNode fullTrack = getJson(API_BASE + "tracks/" + simpleTrack.get("id").asText(), false);
-                if (fullTrack != null && !(fullTrack.has("error") && !fullTrack.get("error").isNull())) {
-                    AudioTrack track = parseTrackWithArtistArtwork(fullTrack, artistArtwork, preview);
-                    if (track != null) {
-                        tracks.add(track);
+            if (!trackIds.isEmpty()) {
+                JsonNode batchTracks = getJson(API_BASE + "tracks?ids=" + trackIds);
+                if (batchTracks != null && batchTracks.has("tracks")) {
+                    for (JsonNode fullTrack : batchTracks.get("tracks")) {
+                        if (fullTrack == null || fullTrack.isNull())
+                            continue;
+                        AudioTrack track = parseTrackWithArtistArtwork(fullTrack, artistArtwork, preview);
+                        if (track != null) {
+                            tracks.add(track);
+                        }
                     }
                 }
             }
@@ -432,24 +364,16 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getPlaylist(String id, boolean preview) throws IOException {
-        boolean anonymous = id.startsWith("37i9dQZ");
-
-        JsonNode playlistJson = getJson(API_BASE + "playlists/" + id, anonymous);
-        if (playlistJson == null || (playlistJson.has("error") && !playlistJson.get("error").isNull())) {
+        JsonNode playlistJson = getJson(API_BASE + "playlists/" + id);
+        if (playlistJson == null || hasError(playlistJson)) {
             return AudioReference.NO_TRACK;
         }
 
         String playlistName = safeText(playlistJson, "name");
         String playlistUrl = getExternalUrl(playlistJson);
         String playlistArtwork = getFirstImage(playlistJson);
-        String owner = playlistJson.has("owner") && playlistJson.get("owner").has("display_name")
-                ? playlistJson.get("owner").get("display_name").asText("Unknown")
-                : "Unknown";
-
-        int totalTracks = 0;
-        if (playlistJson.has("tracks") && playlistJson.get("tracks").has("total")) {
-            totalTracks = playlistJson.get("tracks").get("total").asInt(0);
-        }
+        String owner = playlistJson.path("owner").path("display_name").asText("Unknown");
+        int totalTracks = playlistJson.path("tracks").path("total").asInt(0);
 
         List<AudioTrack> tracks = new ArrayList<>();
         int offset = 0;
@@ -458,21 +382,21 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         JsonNode page;
         do {
             page = getJson(API_BASE + "playlists/" + id + "/tracks?limit=" + PLAYLIST_MAX_PAGE_ITEMS
-                    + "&offset=" + offset, anonymous);
+                    + "&offset=" + offset);
             if (page == null)
                 break;
 
-            JsonNode pageItems = page.has("items") ? page.get("items") : null;
+            JsonNode pageItems = page.get("items");
             if (pageItems == null || !pageItems.isArray())
                 break;
 
             for (JsonNode value : pageItems) {
-                JsonNode trackNode = value.has("track") ? value.get("track") : null;
-                if (trackNode == null || trackNode.isNull())
+                JsonNode trackNode = value.path("track");
+                if (trackNode.isMissingNode() || trackNode.isNull())
                     continue;
-                if (trackNode.has("type") && "episode".equals(trackNode.get("type").asText()))
+                if ("episode".equals(trackNode.path("type").asText()))
                     continue;
-                if (!this.localFiles && trackNode.has("is_local") && trackNode.get("is_local").asBoolean(false))
+                if (!this.localFiles && trackNode.path("is_local").asBoolean(false))
                     continue;
 
                 AudioTrack track = parseTrack(trackNode, preview);
@@ -493,8 +417,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getArtist(String id, boolean preview) throws IOException {
-        JsonNode artistJson = getJson(API_BASE + "artists/" + id, false);
-        if (artistJson == null || (artistJson.has("error") && !artistJson.get("error").isNull())) {
+        JsonNode artistJson = getJson(API_BASE + "artists/" + id);
+        if (artistJson == null || hasError(artistJson)) {
             return AudioReference.NO_TRACK;
         }
 
@@ -502,7 +426,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String artistUrl = getExternalUrl(artistJson);
         String artistArtwork = getFirstImage(artistJson);
 
-        JsonNode topTracksJson = getJson(API_BASE + "artists/" + id + "/top-tracks?market=" + this.countryCode, false);
+        JsonNode topTracksJson = getJson(API_BASE + "artists/" + id + "/top-tracks?market=" + this.countryCode);
 
         List<AudioTrack> tracks = new ArrayList<>();
         if (topTracksJson != null && topTracksJson.has("tracks")) {
@@ -522,31 +446,70 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 ExtendedAudioPlaylist.Type.ARTIST, artistUrl, artistArtwork, artistName, tracks.size());
     }
 
-    private void resolveArtistImages(JsonNode trackJson) {
-        if (trackJson == null || !trackJson.has("artists"))
-            return;
-        JsonNode artists = trackJson.get("artists");
-        if (!artists.isArray() || artists.size() == 0)
-            return;
-
-        JsonNode firstArtist = artists.get(0);
-        if (firstArtist.has("images") && firstArtist.get("images").isArray() && firstArtist.get("images").size() > 0) {
-            return;
-        }
-
-        if (firstArtist.has("id") && !firstArtist.get("id").isNull()) {
-            try {
-                JsonNode artistJson = getJson(API_BASE + "artists/" + firstArtist.get("id").asText(), false);
-                if (artistJson != null && artistJson.has("images")) {
-                    String img = getFirstImage(artistJson);
-                    if (img != null) {
-                        artistImageCache.put(firstArtist.get("id").asText(), img);
-                    }
-                }
-            } catch (IOException e) {
-                log.debug("Failed to resolve artist images: {}", e.getMessage());
+    private void batchResolveArtistImages(JsonNode items) {
+        StringBuilder artistIds = new StringBuilder();
+        for (JsonNode trackNode : items) {
+            String artistId = trackNode.path("artists").path(0).path("id").asText(null);
+            if (artistId != null) {
+                if (artistIds.length() > 0)
+                    artistIds.append(",");
+                artistIds.append(artistId);
             }
         }
+
+        if (artistIds.length() == 0)
+            return;
+
+        try {
+            JsonNode artistResponse = getJson(API_BASE + "artists?ids=" + artistIds);
+            if (artistResponse != null && artistResponse.has("artists")) {
+                for (JsonNode artist : artistResponse.get("artists")) {
+                    if (artist != null && !artist.isNull() && artist.has("id")) {
+                        String img = getFirstImage(artist);
+                        if (img != null) {
+                            artistImageCache.put(artist.get("id").asText(), img);
+                        }
+                    }
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Failed to batch resolve artist images: {}", e.getMessage());
+        }
+    }
+
+    private String resolveFirstArtistArtwork(JsonNode json) {
+        String artistId = json.path("artists").path(0).path("id").asText(null);
+        if (artistId == null)
+            return null;
+
+        String cached = artistImageCache.get(artistId);
+        if (cached != null)
+            return cached;
+
+        try {
+            JsonNode artistJson = getJson(API_BASE + "artists/" + artistId);
+            if (artistJson != null) {
+                String img = getFirstImage(artistJson);
+                if (img != null) {
+                    artistImageCache.put(artistId, img);
+                    return img;
+                }
+            }
+        } catch (IOException e) {
+            log.debug("Failed to resolve artist artwork: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private List<AudioTrack> parseTracks(JsonNode tracksArray, boolean preview) {
+        List<AudioTrack> tracks = new ArrayList<>();
+        for (JsonNode trackNode : tracksArray) {
+            AudioTrack track = parseTrack(trackNode, preview);
+            if (track != null) {
+                tracks.add(track);
+            }
+        }
+        return tracks;
     }
 
     private AudioTrack parseTrack(JsonNode json, boolean preview) {
@@ -562,40 +525,27 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             return null;
 
         String artist = getFirstArtistName(json);
-        long duration = preview ? PREVIEW_LENGTH : (json.has("duration_ms") ? json.get("duration_ms").asLong(0) : 0);
-        String trackId = json.has("id") && !json.get("id").isNull() ? json.get("id").asText() : "unknown";
+        long duration = preview ? PREVIEW_LENGTH : json.path("duration_ms").asLong(0);
+        String trackId = json.path("id").asText("local");
         String trackUrl = getExternalUrl(json);
-        String artworkUrl = null;
-        String albumName = null;
-        String albumUrl = null;
-        String artistUrl = null;
+        String artworkUrl = getFirstImage(json.path("album"));
+        String albumName = safeText(json.path("album"), "name");
+        String albumUrl = getExternalUrl(json.path("album"));
+        String artistUrl = getExternalUrl(json.path("artists").path(0));
+        String previewUrl = json.path("preview_url").asText(null);
+        String isrc = json.path("external_ids").path("isrc").asText(null);
+
         String artistArtwork = overrideArtistArtwork;
-        String previewUrl = json.has("preview_url") && !json.get("preview_url").isNull()
-                ? json.get("preview_url").asText()
-                : null;
-        String isrc = null;
-
-        if (json.has("album") && !json.get("album").isNull()) {
-            JsonNode album = json.get("album");
-            artworkUrl = getFirstImage(album);
-            albumName = safeText(album, "name");
-            albumUrl = getExternalUrl(album);
-        }
-
-        if (json.has("artists") && json.get("artists").isArray() && json.get("artists").size() > 0) {
-            JsonNode firstArtist = json.get("artists").get(0);
-            artistUrl = getExternalUrl(firstArtist);
-            if (artistArtwork == null && firstArtist.has("images") && firstArtist.get("images").isArray()
-                    && firstArtist.get("images").size() > 0) {
-                artistArtwork = firstArtist.get("images").get(0).get("url").asText(null);
+        if (artistArtwork == null) {
+            String firstArtistImg = json.path("artists").path(0).path("images").path(0).path("url").asText(null);
+            if (firstArtistImg != null) {
+                artistArtwork = firstArtistImg;
+            } else {
+                String aid = json.path("artists").path(0).path("id").asText(null);
+                if (aid != null) {
+                    artistArtwork = artistImageCache.get(aid);
+                }
             }
-            if (artistArtwork == null && firstArtist.has("id")) {
-                artistArtwork = artistImageCache.get(firstArtist.get("id").asText());
-            }
-        }
-
-        if (json.has("external_ids") && json.get("external_ids").has("isrc")) {
-            isrc = json.get("external_ids").get("isrc").asText(null);
         }
 
         AudioTrackInfo trackInfo = new AudioTrackInfo(
@@ -612,34 +562,31 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 this);
     }
 
+    private boolean hasError(JsonNode json) {
+        return json.has("error") && !json.get("error").isNull();
+    }
+
     private String safeText(JsonNode node, String field) {
-        if (node == null || !node.has(field) || node.get(field).isNull())
+        if (node == null || node.isMissingNode())
             return "";
-        return node.get(field).asText("");
+        return node.path(field).asText("");
     }
 
     private String getExternalUrl(JsonNode node) {
-        if (node == null || !node.has("external_urls"))
+        if (node == null || node.isMissingNode())
             return null;
-        JsonNode urls = node.get("external_urls");
-        return urls.has("spotify") ? urls.get("spotify").asText(null) : null;
+        return node.path("external_urls").path("spotify").asText(null);
     }
 
     private String getFirstImage(JsonNode node) {
-        if (node == null || !node.has("images"))
+        if (node == null || node.isMissingNode())
             return null;
-        JsonNode images = node.get("images");
-        if (!images.isArray() || images.size() == 0)
-            return null;
-        return images.get(0).has("url") ? images.get(0).get("url").asText(null) : null;
+        return node.path("images").path(0).path("url").asText(null);
     }
 
     private String getFirstArtistName(JsonNode node) {
-        if (node == null || !node.has("artists"))
+        if (node == null || node.isMissingNode())
             return "Unknown";
-        JsonNode artists = node.get("artists");
-        if (!artists.isArray() || artists.size() == 0)
-            return "Unknown";
-        return artists.get(0).has("name") ? artists.get(0).get("name").asText("Unknown") : "Unknown";
+        return node.path("artists").path(0).path("name").asText("Unknown");
     }
 }
