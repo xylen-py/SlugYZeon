@@ -419,7 +419,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 if (title.isEmpty())
                     continue;
 
-                long duration = trackData.path("duration").path("totalMilliseconds").asLong(0);
+                long duration = getGqlDuration(trackData);
                 String trackArtist = getGqlArtistName(trackData);
                 if ("Unknown".equals(trackArtist))
                     trackArtist = albumArtist;
@@ -545,7 +545,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 if (title.isEmpty())
                     continue;
 
-                long duration = trackData.path("duration").path("totalMilliseconds").asLong(0);
+                long duration = getGqlDuration(trackData);
                 String trackUrl = "https://open.spotify.com/track/" + trackId;
                 String trackArtwork = trackData.path("albumOfTrack").path("coverArt")
                         .path("sources").path(0).path("url").asText(null);
@@ -582,7 +582,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         if (title.isEmpty())
             return null;
 
-        long duration = trackData.path("duration").path("totalMilliseconds").asLong(0);
+        long duration = getGqlDuration(trackData);
 
         String artist = getGqlArtistName(trackData);
         String artistUri = trackData.path("artists").path("items").path(0).path("uri").asText(null);
@@ -673,6 +673,33 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             return name;
 
         return "Unknown";
+    }
+
+    private long getGqlDuration(JsonNode node) {
+        if (node == null || node.isMissingNode())
+            return 0;
+
+        long ms = node.path("duration").path("totalMilliseconds").asLong(0);
+        if (ms > 0)
+            return ms;
+
+        ms = node.path("duration_ms").asLong(0);
+        if (ms > 0)
+            return ms;
+
+        ms = node.path("duration").path("milliseconds").asLong(0);
+        if (ms > 0)
+            return ms;
+
+        ms = node.path("trackDuration").path("totalMilliseconds").asLong(0);
+        if (ms > 0)
+            return ms;
+
+        ms = node.path("duration").asLong(0);
+        if (ms > 0)
+            return ms;
+
+        return 0;
     }
 
     private String extractIdFromUri(String uri) {
