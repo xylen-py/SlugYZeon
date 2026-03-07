@@ -8,6 +8,7 @@ import com.slugyzeon.plugin.instagram.InstagramAudioSourceManager;
 import com.slugyzeon.plugin.lastfm.LastFmAudioSourceManager;
 import com.slugyzeon.plugin.pandora.PandoraAudioSourceManager;
 import com.slugyzeon.plugin.spotify.SpotifyAudioSourceManager;
+import com.slugyzeon.plugin.youtube.YouTubeSourceManager;
 import dev.arbjerg.lavalink.api.AudioPlayerManagerConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +31,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private LastFmAudioSourceManager lastFm;
     private PandoraAudioSourceManager pandora;
     private SpotifyAudioSourceManager spotify;
+    private YouTubeSourceManager youtube;
 
     public SlugYZeonPlugin(
             SlugYZeonSourcesConfig sourcesConfig,
@@ -38,7 +40,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             InstagramConfig instagramConfig,
             LastFmConfig lastFmConfig,
             PandoraConfig pandoraConfig,
-            SlugYZeonSpotifyConfig spotifyConfig) {
+            SlugYZeonSpotifyConfig spotifyConfig,
+            YouTubeConfig ytConfig) {
         log.info("Loading SlugYZeoN plugin...");
 
         if (sourcesConfig.isGaana()) {
@@ -99,6 +102,20 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     spotifyConfig.isLocalFiles(),
                     unused -> manager);
         }
+        if (sourcesConfig.isYoutube()) {
+            String[] providers = (ytConfig.getMirrorProviders() != null && !ytConfig.getMirrorProviders().isEmpty())
+                    ? ytConfig.getMirrorProviders().toArray(new String[0])
+                    : new String[] {
+                            "ytsearch:%QUERY%",
+                            "jssearch:%QUERY%",
+                            "scsearch:%QUERY%"
+                    };
+            this.youtube = new YouTubeSourceManager(
+                    ytConfig.getInvidiousInstances(),
+                    ytConfig.getPipedInstances(),
+                    providers,
+                    unused -> manager);
+        }
     }
 
     @Override
@@ -128,6 +145,9 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (spotify != null) {
             log.info("Registering Spotify audio source manager...");
             manager.registerSourceManager(spotify);
+        }
+        if (youtube != null) {
+            youtube.attachToYouTube(manager);
         }
 
         return manager;
