@@ -41,7 +41,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             LastFmConfig lastFmConfig,
             PandoraConfig pandoraConfig,
             SlugYZeonSpotifyConfig spotifyConfig,
-            YouTubeConfig ytConfig) {
+            SlugYZeonYouTubeConfig youtubeConfig) {
         log.info("Loading SlugYZeoN plugin...");
 
         if (sourcesConfig.isGaana()) {
@@ -103,16 +103,15 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     unused -> manager);
         }
         if (sourcesConfig.isYoutube()) {
-            String[] providers = (ytConfig.getMirrorProviders() != null && !ytConfig.getMirrorProviders().isEmpty())
-                    ? ytConfig.getMirrorProviders().toArray(new String[0])
-                    : new String[] {
-                            "ytsearch:%QUERY%",
-                            "jssearch:%QUERY%",
-                            "scsearch:%QUERY%"
-                    };
+            String[] providers = (youtubeConfig.getMirrorProviders() != null && !youtubeConfig.getMirrorProviders().isEmpty())
+                            ? youtubeConfig.getMirrorProviders().toArray(new String[0])
+                            : new String[] {
+                                    "ytsearch:%QUERY%",
+                                    "jssearch:%QUERY%",
+                                    "dzsearch:%QUERY%",
+                                    "scsearch:%QUERY%"
+                            };
             this.youtube = new YouTubeSourceManager(
-                    ytConfig.getInvidiousInstances(),
-                    ytConfig.getPipedInstances(),
                     providers,
                     unused -> manager);
         }
@@ -146,10 +145,14 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             log.info("Registering Spotify audio source manager...");
             manager.registerSourceManager(spotify);
         }
-        if (youtube != null) {
-            youtube.attachToYouTube(manager);
-        }
 
         return manager;
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void onApplicationReady() {
+        if (youtube != null && manager != null) {
+            youtube.attachToYouTube(manager);
+        }
     }
 }

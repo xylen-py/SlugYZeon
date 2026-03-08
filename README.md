@@ -89,8 +89,8 @@ SlugYZeonPlugin (spring @service)
     |       |
     +-- SlugYTube ─── wraps youtube-plugin (enhancer, NOT standalone)
     |       |           └── delegates loadItem() to youtube-plugin
-    |       |           └── wraps tracks with proxy fallback on playback failure
-    |       |           └── fallback chain: invidious → piped → mirror search
+    |       |           └── wraps tracks with direct scraper fallback on playback failure
+    |       |           └── fallback chain: watch page scrape → innertube API → mirror search
     |       |
     +-- gaana ───── external api → mirror resolve
     +-- amazon ──── csrf scrape → mirror resolve
@@ -148,13 +148,13 @@ playback starts:
     +── youtube-plugin fails (login required, 403, bot detection)
             |
             v
-        SlugYTube proxy fallback:
+        SlugYTube direct scraper fallback:
             |
-            +── try invidious (5 instances, round-robin)
+            +── scrape watch page (extract ytInitialPlayerResponse)
             |       |
             |       +── stream MP4/WebM audio → SUCCESS
             |
-            +── try piped (3 instances)
+            +── try innertube clients (WEB_REMIX, TVHTML5)
             |       |
             |       +── stream MP4/WebM audio → SUCCESS
             |
@@ -195,12 +195,12 @@ lavalink:
 plugins:
   slugyzeon:
     sources:
-      gaana: true
-      amazonmusic: true
-      instagram: true
-      lastfm: true
-      pandora: true
-      spotify: true
+      gaana: false
+      amazonmusic: false
+      instagram: false
+      lastfm: false
+      pandora: false
+      spotify: false
       youtube: false
     spotify:
       clientId: ""            # optional — not needed for free usage
@@ -213,16 +213,6 @@ plugins:
       resolveArtistsInSearch: true
       localFiles: false
     youtube:
-      invidiousInstances:
-        - "https://invidious.fdn.fr"
-        - "https://vid.puffyan.us"
-        - "https://invidious.nerdvpn.de"
-        - "https://inv.nadeko.net"
-        - "https://invidious.privacyredirect.com"
-      pipedInstances:
-        - "https://pipedapi.kavin.rocks"
-        - "https://api.piped.yt"
-        - "https://pipedapi.in.projectsegfau.lt"
       mirrorProviders:
         - "ytmsearch:%QUERY%"
         - "scsearch:%QUERY%"
@@ -286,16 +276,6 @@ plugins:
 
   ```yaml
   youtube:
-    invidiousInstances:
-      - "https://invidious.fdn.fr"
-      - "https://vid.puffyan.us"
-      - "https://invidious.nerdvpn.de"
-      - "https://inv.nadeko.net"
-      - "https://invidious.privacyredirect.com"
-    pipedInstances:
-      - "https://pipedapi.kavin.rocks"
-      - "https://api.piped.yt"
-      - "https://pipedapi.in.projectsegfau.lt"
     mirrorProviders:
       - "ytmsearch:%QUERY%"
       - "scsearch:%QUERY%"
@@ -303,8 +283,6 @@ plugins:
 
   | field | default | description |
   |-------|---------|-------------|
-  | `invidiousInstances` | 5 public instances | invidious api endpoints for stream + metadata |
-  | `pipedInstances` | 3 public instances | piped api endpoints as secondary fallback |
   | `mirrorProviders` | ytmsearch, scsearch | last-resort search on other sources |
 
   > replaces the standard youtube-plugin . disable `youtube-plugin` when using this .
@@ -534,13 +512,13 @@ plugins:
 </details>
 
 <details>
-  <summary><b>&nbsp;›&nbsp; youtube proxy playback</b></summary>
+  <summary><b>&nbsp;›&nbsp; youtube direct playback</b></summary>
   <br>
-  &nbsp;›&nbsp; <b>5 invidious</b> + <b>3 piped</b> instances with round-robin rotation<br>
-  &nbsp;›&nbsp; automatic failover between proxy instances<br>
+  &nbsp;›&nbsp; <b>direct watch page scraping</b> bypassing consent/age walls<br>
+  &nbsp;›&nbsp; <b>innertube API fallback</b> (WEB_REMIX, TVHTML5) without credentials<br>
   &nbsp;›&nbsp; last-resort mirror search on youtube music / soundcloud<br>
-  &nbsp;›&nbsp; handles both <b>MP4</b> and <b>WebM</b> audio containers<br>
-  &nbsp;›&nbsp; no oauth, no potoken, no login needed
+  &nbsp;›&nbsp; handles both <b>MP4</b> and <b>WebM</b> audio containers natively<br>
+  &nbsp;›&nbsp; zero dependency on third party proxies or instances
 </details>
 
 <details>

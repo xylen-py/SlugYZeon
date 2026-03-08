@@ -14,20 +14,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class YouTubeTrack extends DelegatedAudioTrack {
 
-    private static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+    private static final Logger log = LoggerFactory.getLogger(YouTubeTrack.class);
 
-    private static final String[] RETRIABLE_KEYWORDS = {
-            "sign in", "login", "bot", "confirm", "verify",
-            "403", "age", "restricted", "unavailable",
-            "country", "blocked", "copyright", "removed",
-            "private", "no supported audio", "playback on other",
-            "premium", "members only", "requires payment"
-    };
+    private static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
     private final YouTubeSourceManager sourceManager;
     private final String videoId;
@@ -48,122 +46,81 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 processDelegate((InternalAudioTrack) originalTrack, executor);
                 return;
             } catch (Exception e) {
-                if (!isRetriableError(e)) {
+                if (!YouTubeSourceManager.isRetriableError(e)) {
                     throw e;
                 }
             }
         }
 
-        YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
+        if (tryProxyStream(executor))
+            return;
+        if (tryMirrorSearch(executor))
+            return;
 
-        if (stream != null) {
+        throw new FriendlyException(
+                "[SlugYZeon] All fallbacks exhausted for " + videoId,
+                FriendlyException.Severity.SUSPICIOUS,
+                new RuntimeException("Video " + videoId));
+    }
+
+    private boolean tryProxyStream(LocalAudioTrackExecutor executor) {
+        for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                playFromProxyStream(stream, executor);
-                return;
+                YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
+                if (stream == null)
+                    return false;
+
+                HttpClient client = HttpClient.newBuilder()
+                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .build();
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(new URI(stream.url))
+                        .header("User-Agent", UA)
+                        .header("Accept", "*/*")
+                        .timeout(Duration.ofSeconds(15))
+                        .GET().build();
+
+                HttpResponse<InputStream> response = client.send(request,
+                        HttpResponse.BodyHandlers.ofInputStream());
+
+                if (response.statusCode() != 200)
+                    continue;
+
+                try (com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream nis = new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(
+                        response.body())) {
+                    if (stream.mimeType != null && (stream.mimeType.contains("webm")
+                            || stream.mimeType.contains("opus"))) {
+                        processDelegate(new MatroskaAudioTrack(trackInfo, nis), executor);
+                    } else {
+                        processDelegate(new MpegAudioTrack(trackInfo, nis), executor);
+                    }
+                    log.info("[SlugYZeon] Successfully opened fallback stream for {}", videoId);
+                    return true;
+                }
             } catch (Exception ignored) {
             }
         }
-
-        AudioItem mirrorResult = searchMirror(trackInfo.title + " " + trackInfo.author);
-        if (tryPlayMirror(mirrorResult, executor)) {
-            return;
-        }
-
-        throw new FriendlyException(
-                "[SlugYTube] YouTube playback failed — all clients, proxies, and mirrors exhausted for: " + videoId,
-                FriendlyException.Severity.SUSPICIOUS,
-                new RuntimeException("Video: " + videoId + " | Title: " + trackInfo.title));
-    }
-
-    private boolean isRetriableError(Exception e) {
-        String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-
-        for (String keyword : RETRIABLE_KEYWORDS) {
-            if (msg.contains(keyword))
-                return true;
-        }
-
-        if (e instanceof FriendlyException) {
-            FriendlyException fe = (FriendlyException) e;
-            if (fe.severity == FriendlyException.Severity.COMMON)
-                return true;
-
-            Throwable cause = fe.getCause();
-            if (cause != null) {
-                String causeMsg = cause.getMessage() != null ? cause.getMessage().toLowerCase() : "";
-                for (String keyword : RETRIABLE_KEYWORDS) {
-                    if (causeMsg.contains(keyword))
-                        return true;
-                }
-            }
-        }
-
         return false;
     }
 
-    private void playFromProxyStream(YouTubeProxyHandler.StreamResult stream,
-            LocalAudioTrackExecutor executor) throws Exception {
-
-        HttpClient client = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(java.time.Duration.ofSeconds(10))
-                .build();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(new URI(stream.url))
-                .header("User-Agent", UA)
-                .header("Accept", "*/*")
-                .GET().build();
-
-        HttpResponse<InputStream> response = client.send(request,
-                HttpResponse.BodyHandlers.ofInputStream());
-
-        if (response.statusCode() != 200) {
-            throw new FriendlyException(
-                    "[SlugYTube] Proxy stream returned HTTP " + response.statusCode(),
-                    FriendlyException.Severity.SUSPICIOUS, null);
-        }
-
-        try (com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream nis = new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(
-                response.body())) {
-            if (stream.mimeType != null && (stream.mimeType.contains("webm")
-                    || stream.mimeType.contains("opus"))) {
-                processDelegate(new MatroskaAudioTrack(trackInfo, nis), executor);
-            } else {
-                processDelegate(new MpegAudioTrack(trackInfo, nis), executor);
-            }
-        }
-    }
-
-    private boolean tryPlayMirror(AudioItem mirrorResult, LocalAudioTrackExecutor executor)
-            throws Exception {
-        if (mirrorResult == null)
-            return false;
-
-        if (mirrorResult instanceof AudioPlaylist) {
-            AudioPlaylist playlist = (AudioPlaylist) mirrorResult;
-            for (AudioTrack track : playlist.getTracks()) {
-                if (track instanceof InternalAudioTrack) {
-                    processDelegate((InternalAudioTrack) track, executor);
-                    return true;
-                }
-            }
-        }
-
-        if (mirrorResult instanceof InternalAudioTrack) {
-            processDelegate((InternalAudioTrack) mirrorResult, executor);
-            return true;
-        }
-
-        return false;
-    }
-
-    private AudioItem searchMirror(String query) {
+    private boolean tryMirrorSearch(LocalAudioTrackExecutor executor) {
         AudioPlayerManager manager = sourceManager.getAudioPlayerManager().apply(null);
         if (manager == null)
-            return null;
+            return false;
+
+        String query = trackInfo.title;
+        if (trackInfo.author != null && !trackInfo.author.isEmpty()
+                && !"Unknown".equalsIgnoreCase(trackInfo.author)
+                && !"Unknown artist".equalsIgnoreCase(trackInfo.author)) {
+            query = trackInfo.title + " " + trackInfo.author;
+        }
 
         for (String provider : sourceManager.getMirrorProviders()) {
+            if (provider.contains("ytsearch") || provider.contains("ytmsearch"))
+                continue;
+
             String searchQuery = provider.replace("%QUERY%", query);
 
             try {
@@ -185,18 +142,33 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     }
 
                     @Override
-                    public void loadFailed(FriendlyException exception) {
+                    public void loadFailed(FriendlyException e) {
                         future.complete(null);
                     }
                 });
 
                 AudioItem result = future.get(10, TimeUnit.SECONDS);
-                if (result != null)
-                    return result;
+                if (result == null)
+                    continue;
+
+                if (result instanceof AudioPlaylist) {
+                    AudioPlaylist playlist = (AudioPlaylist) result;
+                    for (AudioTrack track : playlist.getTracks()) {
+                        if (track instanceof InternalAudioTrack) {
+                            processDelegate((InternalAudioTrack) track, executor);
+                            return true;
+                        }
+                    }
+                }
+
+                if (result instanceof InternalAudioTrack) {
+                    processDelegate((InternalAudioTrack) result, executor);
+                    return true;
+                }
             } catch (Exception ignored) {
             }
         }
-        return null;
+        return false;
     }
 
     @Override
