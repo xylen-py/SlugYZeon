@@ -46,7 +46,7 @@ slugyzeon is a production-grade lavalink plugin providing **7 audio sources** fo
 &nbsp;›&nbsp; **0** credentials needed for spotify<br>
 &nbsp;›&nbsp; **GQL** api bypasses spotify rate limits<br>
 &nbsp;›&nbsp; **TOTP** token generation — works free forever<br>
-&nbsp;›&nbsp; **SlugYTube** — wraps youtube-plugin with proxy fallback on failure
+&nbsp;›&nbsp; **YouTube Enhancer** — wraps youtube-plugin with direct scraper fallback on failure
 
 <br>
 
@@ -59,7 +59,7 @@ slugyzeon is a production-grade lavalink plugin providing **7 audio sources** fo
 | source | prefix | url support | playback |
 |--------|--------|-------------|----------|
 | **spotify** | `spsearch:` / `sprec:` | tracks, albums, playlists, artists | mirrored |
-| **SlugYTube** | wraps youtube-plugin | enhances all youtube playback | proxy fallback (invidious/piped) |
+| **youtube** | wraps youtube-plugin | enhances all youtube playback | direct scraper fallback |
 | **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | mirrored |
 | **amazon music** | `azsearch:` | tracks, albums, playlists, artists | mirrored |
 | **instagram** | — | posts, reels, audio pages | native (mp4 cdn) |
@@ -87,7 +87,7 @@ SlugYZeonPlugin (spring @service)
     |       |           └── TOTP token (base32 nuance + server time sync)
     |       |           └── persisted query hashes (search, track, album, playlist, artist)
     |       |
-    +-- SlugYTube ─── wraps youtube-plugin (enhancer, NOT standalone)
+    +-- YouTube ─── wraps youtube-plugin (enhancer, NOT standalone)
     |       |           └── delegates loadItem() to youtube-plugin
     |       |           └── wraps tracks with direct scraper fallback on playback failure
     |       |           └── fallback chain: watch page scrape → innertube API → mirror search
@@ -127,7 +127,7 @@ audio playback
 
 ---
 
-<b>how SlugYTube works — youtube enhancer</b>
+<b>how the youtube enhancer works</b>
 
 <br><br>
 
@@ -138,7 +138,7 @@ youtube track requested (ytsearch:, URL, etc.)
 youtube-plugin loads track (all clients: WEB, ANDROID, iOS, TV)
     |
     v
-SlugYTube wraps track in YouTubeTrack
+Plugin wraps track in YouTubeTrack
     |
     v
 playback starts:
@@ -148,7 +148,7 @@ playback starts:
     +── youtube-plugin fails (login required, 403, bot detection)
             |
             v
-        SlugYTube direct scraper fallback:
+        Plugin direct scraper fallback:
             |
             +── scrape watch page (extract ytInitialPlayerResponse)
             |       |
@@ -165,7 +165,7 @@ playback starts:
                     +── all exhausted → throw FriendlyException
 ```
 
-> SlugYTube only activates when the youtube-plugin FAILS . normal playback is untouched . requires `youtube-plugin` to be loaded .
+> The enhancer only activates when the youtube-plugin FAILS . normal playback is untouched . requires `youtube-plugin` to be loaded .
 
 <br>
 
@@ -285,7 +285,7 @@ plugins:
   |-------|---------|-------------|
   | `mirrorProviders` | ytmsearch, scsearch | last-resort search on other sources |
 
-  > replaces the standard youtube-plugin . disable `youtube-plugin` when using this .
+  > requires the standard `youtube-plugin` to be loaded . it acts as a fallback when the original plugin fails .
 </details>
 
 <details>
