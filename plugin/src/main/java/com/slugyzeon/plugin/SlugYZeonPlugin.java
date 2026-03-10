@@ -5,7 +5,6 @@ import com.slugyzeon.plugin.amazonmusic.AmazonMusicAudioSourceManager;
 import com.slugyzeon.plugin.config.*;
 import com.slugyzeon.plugin.gaana.GaanaAudioSourceManager;
 import com.slugyzeon.plugin.instagram.InstagramAudioSourceManager;
-import com.slugyzeon.plugin.lastfm.LastFmAudioSourceManager;
 import com.slugyzeon.plugin.pandora.PandoraAudioSourceManager;
 import com.slugyzeon.plugin.spotify.SpotifyAudioSourceManager;
 import com.slugyzeon.plugin.youtube.YouTubeSourceManager;
@@ -28,7 +27,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private GaanaAudioSourceManager gaana;
     private AmazonMusicAudioSourceManager amazonMusic;
     private InstagramAudioSourceManager instagram;
-    private LastFmAudioSourceManager lastFm;
     private PandoraAudioSourceManager pandora;
     private SpotifyAudioSourceManager spotify;
     private YouTubeSourceManager youtube;
@@ -38,7 +36,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             GaanaConfig gaanaConfig,
             AmazonMusicConfig amazonMusicConfig,
             InstagramConfig instagramConfig,
-            LastFmConfig lastFmConfig,
             PandoraConfig pandoraConfig,
             SlugYZeonSpotifyConfig spotifyConfig,
             SlugYZeonYouTubeConfig youtubeConfig) {
@@ -64,20 +61,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         }
         if (sourcesConfig.isInstagram()) {
             this.instagram = new InstagramAudioSourceManager();
-        }
-        if (sourcesConfig.isLastfm()) {
-            String apiKey = lastFmConfig.getApiKey();
-            if (apiKey == null || apiKey.isEmpty()) {
-                log.warn("Last.fm source disabled as no API key provided");
-            } else {
-                this.lastFm = new LastFmAudioSourceManager(
-                        apiKey,
-                        DEFAULT_PROVIDERS,
-                        lastFmConfig.getSearchLimit(),
-                        lastFmConfig.getAlbumLoadLimit(),
-                        lastFmConfig.getArtistLoadLimit(),
-                        unused -> manager);
-            }
         }
         if (sourcesConfig.isPandora()) {
             this.pandora = new PandoraAudioSourceManager(
@@ -132,10 +115,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (instagram != null) {
             log.info("Registering Instagram audio source manager...");
             manager.registerSourceManager(instagram);
-        }
-        if (lastFm != null) {
-            log.info("Registering Last.fm audio source manager...");
-            manager.registerSourceManager(lastFm);
         }
         if (pandora != null) {
             log.info("Registering Pandora audio source manager...");

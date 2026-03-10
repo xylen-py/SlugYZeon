@@ -14,7 +14,7 @@
 </h2>
 
 <p align="center">
-  <i>multi-source lavalink plugin — 7 audio sources, zero rate limits, zero credentials needed</i>
+  <i>multi-source lavalink plugin — 6 audio sources, zero rate limits, zero credentials needed</i>
 </p>
 
 <img src="https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java" />
@@ -25,7 +25,7 @@
 
 <br><br>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=14&pause=1000&color=667EEA&background=0D1117&vCenter=true&center=true&width=500&lines=>+slugyzeon+v3.0.7+loaded;>+spotify+gql+initialized;>+youtube+fallback+ready;>+7+sources+registered;>+zero+rate+limits!" alt="Typing SVG" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=14&pause=1000&color=667EEA&background=0D1117&vCenter=true&center=true&width=500&lines=>+slugyzeon+v4.0.0+loaded;>+spotify+gql+initialized;>+youtube+fallback+ready;>+6+sources+registered;>+zero+rate+limits!" alt="Typing SVG" />
 
 </div>
 
@@ -37,11 +37,11 @@
 
 <br>
 
-slugyzeon is a production-grade lavalink plugin providing **7 audio sources** for discord music bots . built with java's native `HttpClient`, zero external http dependencies, and spotify's internal graphql api for zero rate limits .
+slugyzeon is a production-grade lavalink plugin providing **6 audio sources** for discord music bots . built with java's native `HttpClient`, zero external http dependencies, and spotify's internal graphql api for zero rate limits .
 
 <br>
 
-&nbsp;›&nbsp; **7** audio sources in one plugin<br>
+&nbsp;›&nbsp; **6** audio sources in one plugin<br>
 &nbsp;›&nbsp; **0** external http dependencies<br>
 &nbsp;›&nbsp; **0** credentials needed for spotify<br>
 &nbsp;›&nbsp; **GQL** api bypasses spotify rate limits<br>
@@ -56,15 +56,14 @@ slugyzeon is a production-grade lavalink plugin providing **7 audio sources** fo
 
 <br><br>
 
-| source | prefix | url support | playback |
-|--------|--------|-------------|----------|
-| **spotify** | `spsearch:` / `sprec:` | tracks, albums, playlists, artists | mirrored |
-| **youtube** | wraps youtube-plugin | enhances all youtube playback | direct scraper fallback |
-| **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | mirrored |
-| **amazon music** | `azsearch:` | tracks, albums, playlists, artists | mirrored |
-| **instagram** | — | posts, reels, audio pages | native (mp4 cdn) |
-| **last.fm** | `lfsearch:` / `lfrec:` | tracks, artists, albums | mirrored |
-| **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | mirrored |
+| source | prefix | url support | isrc mirroring | playback |
+|--------|--------|-------------|----------------|----------|
+| **spotify** | `spsearch:` / `sprec:` | tracks, albums, playlists, artists | yes (spclient) | mirrored |
+| **youtube** | wraps youtube-plugin | enhances all youtube playback | — | direct scraper fallback |
+| **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | yes | mirrored |
+| **amazon music** | `azsearch:` | tracks, albums, playlists, artists | partial | mirrored |
+| **instagram** | — | posts, reels, audio pages | — | native (mp4 cdn) |
+| **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | yes | mirrored |
 
 <br>
 
@@ -85,7 +84,8 @@ SlugYZeonPlugin (spring @service)
     |       v
     +-- spotify ─── GQL API (api-partner.spotify.com)
     |       |           └── TOTP token (base32 nuance + server time sync)
-    |       |           └── persisted query hashes (search, track, album, playlist, artist)
+    |       |           └── persisted query hashes (remote-loaded, auto-updated)
+    |       |           └── spclient metadata → free ISRC for every track
     |       |
     +-- YouTube ─── wraps youtube-plugin (enhancer, NOT standalone)
     |       |           └── delegates loadItem() to youtube-plugin
@@ -95,7 +95,6 @@ SlugYZeonPlugin (spring @service)
     +-- gaana ───── external api → mirror resolve
     +-- amazon ──── csrf scrape → mirror resolve
     +-- instagram ─ graphql (xdt_shortcode_media) → native mp4
-    +-- lastfm ──── api + html scrape → mirror resolve
     +-- pandora ──── token api / anon login → mirror resolve
     |
     v
@@ -117,7 +116,7 @@ audio playback
 1. fetch nuance json ─── base32-encoded TOTP secret
 2. get spotify server time ─── /server-time endpoint
 3. generate RFC 6238 TOTP ─── 30s window, sha1, 6 digits
-4. exchange TOTP for access token ─── /accesstoken/plc
+4. exchange TOTP for access token ─── /api/token
 5. call GraphQL API ─── api-partner.spotify.com/pathfinder/v2/query
 ```
 
@@ -198,7 +197,6 @@ plugins:
       gaana: false
       amazonmusic: false
       instagram: false
-      lastfm: false
       pandora: false
       spotify: false
       youtube: false
@@ -227,11 +225,6 @@ plugins:
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50
-    lastfm:
-      apiKey: "YOUR_LASTFM_API_KEY"
-      searchLimit: 10
-      albumLoadLimit: 50
-      artistLoadLimit: 10
     pandora:
       tokenApiUrl: "https://get.1lucas1apk.fun/pandora/gettoken"
       csrfToken: ""
@@ -264,8 +257,13 @@ plugins:
   | `nuanceUrl` | `""` | custom nuance json url . uses built-in url by default |
 
   **token priority:**
-  1. **client credentials** — if `clientId` + `clientSecret` set, oauth token used first
-  2. **TOTP generation** — base32 secret from nuance, synced with spotify server time, RFC 6238
+  1. **TOTP generation** — base32 secret from nuance, synced with spotify server time, RFC 6238
+  2. **client credentials** — if `clientId` + `clientSecret` set, used for REST API calls
+
+  **ISRC resolution:**
+  1. **spclient metadata** — `spclient.wg.spotify.com/metadata/4/track/{hexId}` → free, no credentials
+  2. **GQL externalIds** — fallback if spclient returns it
+  3. **query fallback** — `ytsearch:Title Artist` if no ISRC available
 
   > everything is optional . spotify works entirely free without any credentials .
 </details>
@@ -312,19 +310,6 @@ plugins:
     playlistLoadLimit: 50
     albumLoadLimit: 50
     artistLoadLimit: 50
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; last.fm config</b></summary>
-  <br>
-
-  ```yaml
-  lastfm:
-    apiKey: "YOUR_LASTFM_API_KEY"
-    searchLimit: 10
-    albumLoadLimit: 50
-    artistLoadLimit: 10
   ```
 </details>
 
@@ -448,24 +433,6 @@ plugins:
 </details>
 
 <details>
-  <summary><b>&nbsp;›&nbsp; last.fm</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=lfsearch:Creep Radiohead
-
-  # recommendations
-  GET /v4/loadtracks?identifier=lfrec:Radiohead - Creep
-
-  # url support
-  GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead/_/Creep
-  GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead/OK+Computer
-  GET /v4/loadtracks?identifier=https://www.last.fm/music/Radiohead
-  ```
-</details>
-
-<details>
   <summary><b>&nbsp;›&nbsp; pandora</b></summary>
   <br>
 
@@ -498,7 +465,7 @@ plugins:
   &nbsp;›&nbsp; <b>ISRC-first</b> resolution for highest accuracy<br>
   &nbsp;›&nbsp; automatic <b>query fallback</b> (artist + title search)<br>
   &nbsp;›&nbsp; configurable provider chain<br>
-  &nbsp;›&nbsp; works across all mirrored sources (spotify, gaana, amazon, lastfm, pandora)
+  &nbsp;›&nbsp; works across all mirrored sources (spotify, gaana, amazon, pandora)
 </details>
 
 <details>
@@ -506,6 +473,7 @@ plugins:
   <br>
   &nbsp;›&nbsp; uses <code>api-partner.spotify.com/pathfinder/v2/query</code><br>
   &nbsp;›&nbsp; persisted query hashes for <b>search, track, album, playlist, artist</b><br>
+  &nbsp;›&nbsp; <b>remote hash loading</b> — GQL hashes fetched from remote URL, always up to date<br>
   &nbsp;›&nbsp; <b>300 tracks</b> per album in single call (vs 50 with REST)<br>
   &nbsp;›&nbsp; <b>343 tracks</b> per playlist in single call<br>
   &nbsp;›&nbsp; multi-path artist name + duration resolution
@@ -535,6 +503,7 @@ plugins:
   <summary><b>&nbsp;›&nbsp; rich metadata</b></summary>
   <br>
   &nbsp;›&nbsp; album name, album url, artist url, artist artwork<br>
+  &nbsp;›&nbsp; <b>ISRC codes</b> attached to every track for precise mirroring<br>
   &nbsp;›&nbsp; extended playlists with type enum (ALBUM, PLAYLIST, ARTIST, RECOMMENDATIONS)<br>
   &nbsp;›&nbsp; preview url for 30s clips<br>
   &nbsp;›&nbsp; artwork upscaling
@@ -593,7 +562,7 @@ see [LICENSE](LICENSE) for full details .
 
 <br>
 
-`.1xylen SlugYZeon v3 - Lavalink`
+`.1xylen SlugYZeon v4.0.0 - Lavalink`
 
 <br><br>
 

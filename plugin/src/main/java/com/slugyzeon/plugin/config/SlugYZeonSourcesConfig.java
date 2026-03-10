@@ -10,7 +10,6 @@ public class SlugYZeonSourcesConfig {
     private boolean gaana = true;
     private boolean amazonmusic = true;
     private boolean instagram = true;
-    private boolean lastfm = true;
     private boolean pandora = true;
     private boolean spotify = false;
     private boolean youtube = false;
@@ -37,14 +36,6 @@ public class SlugYZeonSourcesConfig {
 
     public void setInstagram(boolean instagram) {
         this.instagram = instagram;
-    }
-
-    public boolean isLastfm() {
-        return lastfm;
-    }
-
-    public void setLastfm(boolean lastfm) {
-        this.lastfm = lastfm;
     }
 
     public boolean isPandora() {
