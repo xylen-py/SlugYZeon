@@ -19,6 +19,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private static final Logger log = LoggerFactory.getLogger(SlugYZeonPlugin.class);
     private static final String[] DEFAULT_PROVIDERS = new String[] {
             "ytsearch:\"%ISRC%\"",
+            "ytmsearch:%QUERY%",
             "ytsearch:%QUERY%"
     };
 
