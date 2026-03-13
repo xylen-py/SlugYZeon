@@ -52,6 +52,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             }
         }
 
+        if (tryExactOfficialTrackFallback(executor))
+            return;
         if (tryProxyStream(executor))
             return;
         if (tryMirrorSearch(executor))
@@ -61,6 +63,76 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 "[SlugYZeon] All fallbacks exhausted for " + videoId,
                 FriendlyException.Severity.SUSPICIOUS,
                 new RuntimeException("Video " + videoId));
+    }
+
+    private boolean tryExactOfficialTrackFallback(LocalAudioTrackExecutor executor) {
+        AudioPlayerManager manager = sourceManager.getAudioPlayerManager().apply(null);
+        if (manager == null) {
+            return false;
+        }
+
+        String query = null;
+        if (trackInfo.isrc != null && !trackInfo.isrc.isEmpty()) {
+            query = "ytmsearch:\"" + trackInfo.isrc.replace("-", "") + "\"";
+        } else {
+            String counterpartId = sourceManager.getProxyHandler().getCounterpartVideoId(this.videoId);
+            if (counterpartId != null && !counterpartId.isEmpty()) {
+                query = "ytsearch:" + counterpartId;
+            } else {
+                return false;
+            }
+        }
+
+        try {
+            CompletableFuture<AudioItem> future = new CompletableFuture<>();
+            manager.loadItem(query, new AudioLoadResultHandler() {
+                @Override
+                public void trackLoaded(AudioTrack track) {
+                    future.complete(track);
+                }
+
+                @Override
+                public void playlistLoaded(AudioPlaylist playlist) {
+                    future.complete(playlist);
+                }
+
+                @Override
+                public void noMatches() {
+                    future.complete(null);
+                }
+
+                @Override
+                public void loadFailed(FriendlyException e) {
+                    future.complete(null);
+                }
+            });
+
+            AudioItem result = future.get(10, TimeUnit.SECONDS);
+
+            if (result instanceof AudioPlaylist) {
+                AudioPlaylist playlist = (AudioPlaylist) result;
+                for (AudioTrack track : playlist.getTracks()) {
+                    if (!track.getIdentifier().equals(this.videoId)) {
+                        if (track instanceof InternalAudioTrack) {
+                            log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'", videoId,
+                                    query);
+                            processDelegate((InternalAudioTrack) track, executor);
+                            return true;
+                        }
+                    }
+                }
+            } else if (result instanceof InternalAudioTrack) {
+                AudioTrack track = (AudioTrack) result;
+                if (!track.getIdentifier().equals(this.videoId)) {
+                    log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'", videoId, query);
+                    processDelegate((InternalAudioTrack) track, executor);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[SlugYZeon] Exact match fallback failed for {}", videoId, e);
+        }
+        return false;
     }
 
     private boolean tryProxyStream(LocalAudioTrackExecutor executor) {
