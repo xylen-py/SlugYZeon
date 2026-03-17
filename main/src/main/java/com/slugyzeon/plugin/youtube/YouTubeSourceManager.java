@@ -207,6 +207,19 @@ public class YouTubeSourceManager implements AudioSourceManager {
             String videoId = extractVideoId(id);
             if (videoId != null) {
                 YouTubeProxyHandler.VideoInfo info = proxyHandler.getVideoInfo(videoId);
+
+                if (info == null) {
+                    List<YouTubeProxyHandler.VideoInfo> fallbackSearchResults = proxyHandler.search(videoId, false);
+                    if (fallbackSearchResults != null) {
+                        for (YouTubeProxyHandler.VideoInfo result : fallbackSearchResults) {
+                            if (videoId.equals(result.videoId)) {
+                                info = result;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (info != null) {
                     log.info("[SlugYZeon] successfully extracted info for videoId {}", videoId);
                     return buildProxyTrack(info);

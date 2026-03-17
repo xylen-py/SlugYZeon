@@ -25,11 +25,6 @@ public class AndroidVrClient extends InnerTubeClient {
     }
 
     @Override
-    public String getEndpointDomain() {
-        return "https://youtubei.googleapis.com";
-    }
-
-    @Override
     public void populateClientContext(ObjectNode clientNode) {
         super.populateClientContext(clientNode);
         clientNode.put("osName", "Android").put("osVersion", "14");
