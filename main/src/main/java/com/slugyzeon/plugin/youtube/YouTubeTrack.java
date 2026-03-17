@@ -15,6 +15,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -52,6 +54,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             }
         }
 
+        if (tryExactOfficialTrackFallback(executor))
+            return;
         if (tryProxyStream(executor))
             return;
         if (tryMirrorSearch(executor))
@@ -61,6 +65,86 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 "[SlugYZeon] All fallbacks exhausted for " + videoId,
                 FriendlyException.Severity.SUSPICIOUS,
                 new RuntimeException("Video " + videoId));
+    }
+
+    private boolean tryExactOfficialTrackFallback(LocalAudioTrackExecutor executor) {
+        AudioPlayerManager manager = sourceManager.getAudioPlayerManager().apply(null);
+        if (manager == null) {
+            return false;
+        }
+
+        List<String> validQueries = new ArrayList<>();
+        if (trackInfo.isrc != null && !trackInfo.isrc.isEmpty()) {
+            validQueries.add("ytmsearch:\"" + trackInfo.isrc.replace("-", "") + "\"");
+        }
+
+        String counterpartId = sourceManager.getProxyHandler().getCounterpartVideoId(this.videoId);
+        if (counterpartId != null && !counterpartId.isEmpty()) {
+            validQueries.add("ytsearch:" + counterpartId);
+        }
+
+        if (trackInfo.title != null && !trackInfo.title.isEmpty() && trackInfo.author != null
+                && !trackInfo.author.isEmpty()) {
+            if (!trackInfo.author.equalsIgnoreCase("Unknown")
+                    && !trackInfo.author.equalsIgnoreCase("Unknown artist")) {
+                validQueries.add("ytmsearch:" + trackInfo.title + " " + trackInfo.author);
+            }
+        }
+
+        for (String query : validQueries) {
+            try {
+                CompletableFuture<AudioItem> future = new CompletableFuture<>();
+                manager.loadItem(query, new AudioLoadResultHandler() {
+                    @Override
+                    public void trackLoaded(AudioTrack track) {
+                        future.complete(track);
+                    }
+
+                    @Override
+                    public void playlistLoaded(AudioPlaylist playlist) {
+                        future.complete(playlist);
+                    }
+
+                    @Override
+                    public void noMatches() {
+                        future.complete(null);
+                    }
+
+                    @Override
+                    public void loadFailed(FriendlyException e) {
+                        future.complete(null);
+                    }
+                });
+
+                AudioItem result = future.get(10, TimeUnit.SECONDS);
+
+                if (result instanceof AudioPlaylist) {
+                    AudioPlaylist playlist = (AudioPlaylist) result;
+                    for (AudioTrack track : playlist.getTracks()) {
+                        if (!track.getIdentifier().equals(this.videoId)) {
+                            if (track instanceof InternalAudioTrack) {
+                                log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'",
+                                        videoId,
+                                        query);
+                                processDelegate((InternalAudioTrack) track, executor);
+                                return true;
+                            }
+                        }
+                    }
+                } else if (result instanceof InternalAudioTrack) {
+                    AudioTrack track = (AudioTrack) result;
+                    if (!track.getIdentifier().equals(this.videoId)) {
+                        log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'", videoId,
+                                query);
+                        processDelegate((InternalAudioTrack) track, executor);
+                        return true;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[SlugYZeon] Exact match fallback query '{}' failed for {}", query, videoId, e);
+            }
+        }
+        return false;
     }
 
     private boolean tryProxyStream(LocalAudioTrackExecutor executor) {

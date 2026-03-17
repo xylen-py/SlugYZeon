@@ -7,10 +7,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class SlugYZeonSourcesConfig {
 
-    private boolean gaana = true;
-    private boolean amazonmusic = true;
-    private boolean instagram = true;
-    private boolean pandora = true;
+    private boolean gaana = false;
+    private boolean amazonmusic = false;
+    private boolean instagram = false;
+    private boolean pandora = false;
     private boolean spotify = false;
     private boolean youtube = false;
 

@@ -139,7 +139,8 @@ public class YouTubeSourceManager implements AudioSourceManager {
         }
 
         if (loadError != null && isRetriableError(loadError)) {
-            log.info("[SlugYZeon] Original YouTube client failed & attempting scraper fallback for {}", reference.identifier);
+            log.info("[SlugYZeon] Original YouTube client failed & attempting scraper fallback for {}",
+                    reference.identifier);
             AudioItem fallback = fallbackLoadItem(reference);
             if (fallback != null)
                 return fallback;
@@ -218,7 +219,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private AudioTrack buildProxyTrack(YouTubeProxyHandler.VideoInfo info) {
         AudioTrackInfo trackInfo = new AudioTrackInfo(
                 info.title, info.author, info.durationMs, info.videoId,
-                false, info.uri, info.thumbnail, null);
+                info.isStream, info.uri, info.thumbnail, info.isrc);
         return new YouTubeTrack(trackInfo, info.videoId, null, this);
     }
 
