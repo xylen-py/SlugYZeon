@@ -328,7 +328,7 @@ public class YouTubeProxyHandler {
                             continue;
 
                         results.add(new VideoInfo(videoId, title, author.isEmpty() ? "Unknown" : author,
-                                durationMs > 0 ? durationMs : Long.MAX_VALUE, null,
+                                durationMs > 0 ? durationMs : Long.MAX_VALUE, extractThumbnail(renderer, videoId),
                                 "https://www.youtube.com/watch?v=" + videoId, durationMs == 0, null));
                         continue;
                     }
@@ -355,7 +355,8 @@ public class YouTubeProxyHandler {
                     }
 
                     results.add(new VideoInfo(videoId, title, author, durationMs > 0 ? durationMs : Long.MAX_VALUE,
-                            null, "https://www.youtube.com/watch?v=" + videoId, durationMs == 0, null));
+                            extractThumbnail(renderer, videoId), "https://www.youtube.com/watch?v=" + videoId,
+                            durationMs == 0, null));
 
                     if (results.size() >= 20)
                         break;
@@ -410,6 +411,18 @@ public class YouTubeProxyHandler {
         return node.path("simpleText").asText("Unknown").trim();
     }
 
+    private String extractThumbnail(JsonNode renderer, String videoId) {
+        String url = renderer.path("thumbnail").path("thumbnails").path(0).path("url").asText(null);
+        if (url == null) {
+            url = renderer.path("thumbnail").path("musicThumbnailRenderer").path("thumbnail").path("thumbnails").path(0)
+                    .path("url").asText(null);
+        }
+        if (url == null && videoId != null) {
+            url = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+        }
+        return url;
+    }
+
     private long parseDurationStrict(String text) {
         if (text == null || text.trim().isEmpty())
             return 0;
@@ -446,7 +459,7 @@ public class YouTubeProxyHandler {
 
         return new VideoInfo(videoDetails.path("videoId").asText(videoId), videoDetails.path("title").asText("Unknown"),
                 videoDetails.path("author").asText("Unknown"), durationMs > 0 ? durationMs : Long.MAX_VALUE,
-                videoDetails.path("thumbnail").path("thumbnails").path(0).path("url").asText(null),
+                extractThumbnail(videoDetails, videoId),
                 "https://www.youtube.com/watch?v=" + videoId,
                 videoDetails.path("isLiveContent").asBoolean(durationMs == 0), null);
     }
