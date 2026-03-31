@@ -52,10 +52,20 @@ public class PandoraTokenTracker {
         if (configCsrfToken != null && !configCsrfToken.isEmpty()) {
             this.csrfToken = configCsrfToken;
         }
-        try {
-            this.refreshTokens();
-        } catch (Exception e) {
-            log.warn("Failed to pre-fetch Pandora tokens during initialization, will fetch on first request", e);
+        boolean tokenReady = false;
+        for (int attempt = 1; attempt <= 3 && !tokenReady; attempt++) {
+            try {
+                this.refreshTokens();
+                tokenReady = true;
+            } catch (Exception e) {
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(1000L * attempt);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
         }
     }
 

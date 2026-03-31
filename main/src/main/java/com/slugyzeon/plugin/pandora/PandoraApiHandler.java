@@ -42,6 +42,9 @@ public class PandoraApiHandler {
     }
 
     private JsonNode postJsonWithRetry(String path, String body, boolean isRetry) throws IOException {
+        String csrf = tokenTracker.getCsrfToken();
+        String auth = tokenTracker.getAuthToken();
+
         HttpInterface httpInterface = sourceManager.getHttpInterface();
         tokenTracker.loadCookies(httpInterface);
 
@@ -52,8 +55,8 @@ public class PandoraApiHandler {
         post.setHeader("origin", BASE_URL);
         post.setHeader("sec-fetch-mode", "cors");
         post.setHeader("sec-fetch-site", "same-origin");
-        post.setHeader("X-Csrftoken", tokenTracker.getCsrfToken());
-        post.setHeader("X-Authtoken", tokenTracker.getAuthToken());
+        post.setHeader("X-Csrftoken", csrf);
+        post.setHeader("X-Authtoken", auth);
         post.setHeader("User-Agent", USER_AGENT);
         post.setEntity(new StringEntity(body, StandardCharsets.UTF_8));
 
