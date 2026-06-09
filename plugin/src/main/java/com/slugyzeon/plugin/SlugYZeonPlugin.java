@@ -42,7 +42,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             PandoraConfig pandoraConfig,
             SlugYZeonSpotifyConfig spotifyConfig,
             SlugYZeonYouTubeConfig youtubeConfig,
-            DeezerConfig deezerConfig) {
+            SlugYZeonDeezerConfig deezerConfig) {
         log.info("Loading SlugYZeoN plugin...");
 
         if (sourcesConfig.isGaana()) {

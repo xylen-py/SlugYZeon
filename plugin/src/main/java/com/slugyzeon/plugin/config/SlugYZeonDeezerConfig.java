@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 @ConfigurationProperties(prefix = "plugins.slugyzeon.deezer")
 @Component
-public class DeezerConfig {
+public class SlugYZeonDeezerConfig {
 
     private String apiUrl = "https://deezer-plugin-api.vercel.app/api";
     private int playlistLoadLimit = 50;
