@@ -14,18 +14,18 @@
 </h2>
 
 <p align="center">
-  <i>multi-source lavalink plugin — 6 audio sources, zero rate limits, zero credentials needed</i>
+  <i>multi-source lavalink plugin — 7 audio sources, zero rate limits, zero credentials needed</i>
 </p>
 
 <img src="https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java" />
 <img src="https://img.shields.io/badge/Lavalink-4.0+-7289DA?style=for-the-badge" alt="Lavalink" />
 <img src="https://img.shields.io/badge/License-MIT-764ba2?style=for-the-badge" alt="License" />
-<img src="https://img.shields.io/badge/Sources-7-667eea?style=for-the-badge" alt="Sources" />
+<img src="https://img.shields.io/badge/Sources-8-667eea?style=for-the-badge" alt="Sources" />
 <img src="https://img.shields.io/badge/HTTP_Deps-Zero-00C853?style=for-the-badge" alt="Zero Deps" />
 
 <br><br>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=14&pause=1000&color=667EEA&background=0D1117&vCenter=true&center=true&width=500&lines=>+slugyzeon+v4.0.0+loaded;>+spotify+gql+initialized;>+youtube+fallback+ready;>+6+sources+registered;>+zero+rate+limits!" alt="Typing SVG" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=14&pause=1000&color=667EEA&background=0D1117&vCenter=true&center=true&width=500&lines=>+slugyzeon+v4.0.0+loaded;>+spotify+gql+initialized;>+youtube+fallback+ready;> +deezer+api+ready;> +8+sources+registered;>+zero+rate+limits!" alt="Typing SVG" />
 
 </div>
 
@@ -37,11 +37,11 @@
 
 <br>
 
-slugyzeon is a production-grade lavalink plugin providing **6 audio sources** for discord music bots . built with java's native `HttpClient`, zero external http dependencies, and spotify's internal graphql api for zero rate limits .
+slugyzeon is a production-grade lavalink plugin providing **7 audio sources** for discord music bots . built with java's native `HttpClient`, zero external http dependencies, and spotify's internal graphql api for zero rate limits .
 
 <br>
 
-&nbsp;›&nbsp; **6** audio sources in one plugin<br>
+&nbsp;›&nbsp; **7** audio sources in one plugin<br>
 &nbsp;›&nbsp; **0** external http dependencies<br>
 &nbsp;›&nbsp; **0** credentials needed for spotify<br>
 &nbsp;›&nbsp; **GQL** api bypasses spotify rate limits<br>
@@ -64,6 +64,7 @@ slugyzeon is a production-grade lavalink plugin providing **6 audio sources** fo
 | **amazon music** | `azsearch:` | tracks, albums, playlists, artists | partial | mirrored |
 | **instagram** | — | posts, reels, audio pages | — | native (mp4 cdn) |
 | **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | yes | mirrored |
+| **deezer** | `dzsearch:` / `dzrec:` | tracks, albums, playlists, artists | yes (isrc) | direct (api stream) |
 
 <br>
 
@@ -96,6 +97,7 @@ SlugYZeonPlugin (spring @service)
     +-- amazon ──── csrf scrape → mirror resolve
     +-- instagram ─ graphql (xdt_shortcode_media) → native mp4
     +-- pandora ──── token api / anon login → mirror resolve
+    +-- deezer ───── external api (deezer-plugin-api) → mirror resolve
     |
     v
 mirror system (ISRC-first → query fallback)
@@ -200,6 +202,7 @@ plugins:
       pandora: false
       spotify: false
       youtube: false
+      deezer: false
     spotify:
       clientId: ""            # optional — not needed for free usage
       clientSecret: ""        # optional — not needed for free usage
@@ -230,6 +233,12 @@ plugins:
       csrfToken: ""
       preferTokenApi: true
       searchLimit: 6
+    deezer:
+      apiUrl: "https://deezer-plugin-api.vercel.app/api"
+      playlistLoadLimit: 50
+      albumLoadLimit: 50
+      artistLoadLimit: 50
+      searchLimit: 25
 ```
 
 <details>
@@ -324,6 +333,28 @@ plugins:
     preferTokenApi: true
     searchLimit: 6
   ```
+</details>
+
+<details>
+  <summary><b>&nbsp;›&nbsp; deezer config</b></summary>
+  <br>
+
+  ```yaml
+  deezer:
+    apiUrl: "https://deezer-plugin-api.vercel.app/api"
+    playlistLoadLimit: 50
+    albumLoadLimit: 50
+    artistLoadLimit: 50
+    searchLimit: 25
+  ```
+
+  | field | default | description |
+  |-------|---------|-------------|
+  | `apiUrl` | `https://deezer-plugin-api.vercel.app/api` | deezer plugin api base url |
+  | `playlistLoadLimit` | `50` | max tracks per playlist load |
+  | `albumLoadLimit` | `50` | max tracks per album load |
+  | `artistLoadLimit` | `50` | max tracks per artist load |
+  | `searchLimit` | `25` | max search results |
 </details>
 
 <br>
@@ -451,6 +482,31 @@ plugins:
   ```
 </details>
 
+<details>
+  <summary><b>&nbsp;›&nbsp; deezer</b></summary>
+  <br>
+
+  ```bash
+  # search
+  GET /v4/loadtracks?identifier=dzsearch:Starboy
+
+  # recommendations (charts)
+  GET /v4/loadtracks?identifier=dzrec:top
+
+  # track url
+  GET /v4/loadtracks?identifier=https://www.deezer.com/track/142734142
+
+  # album url
+  GET /v4/loadtracks?identifier=https://www.deezer.com/album/14279764
+
+  # playlist url
+  GET /v4/loadtracks?identifier=https://www.deezer.com/playlist/53362031
+
+  # artist url (top tracks)
+  GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
+  ```
+</details>
+
 <br>
 
 ---
@@ -465,7 +521,7 @@ plugins:
   &nbsp;›&nbsp; <b>ISRC-first</b> resolution for highest accuracy<br>
   &nbsp;›&nbsp; automatic <b>query fallback</b> (artist + title search)<br>
   &nbsp;›&nbsp; configurable provider chain<br>
-  &nbsp;›&nbsp; works across all mirrored sources (spotify, gaana, amazon, pandora)
+  &nbsp;›&nbsp; works across all mirrored sources (spotify, gaana, amazon, pandora, deezer)
 </details>
 
 <details>

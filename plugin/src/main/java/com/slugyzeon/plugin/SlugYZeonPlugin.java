@@ -3,6 +3,7 @@ package com.slugyzeon.plugin;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.slugyzeon.plugin.amazonmusic.AmazonMusicAudioSourceManager;
 import com.slugyzeon.plugin.config.*;
+import com.slugyzeon.plugin.deezer.DeezerAudioSourceManager;
 import com.slugyzeon.plugin.gaana.GaanaAudioSourceManager;
 import com.slugyzeon.plugin.instagram.InstagramAudioSourceManager;
 import com.slugyzeon.plugin.pandora.PandoraAudioSourceManager;
@@ -31,6 +32,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private PandoraAudioSourceManager pandora;
     private SpotifyAudioSourceManager spotify;
     private YouTubeSourceManager youtube;
+    private DeezerAudioSourceManager deezer;
 
     public SlugYZeonPlugin(
             SlugYZeonSourcesConfig sourcesConfig,
@@ -39,7 +41,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             InstagramConfig instagramConfig,
             PandoraConfig pandoraConfig,
             SlugYZeonSpotifyConfig spotifyConfig,
-            SlugYZeonYouTubeConfig youtubeConfig) {
+            SlugYZeonYouTubeConfig youtubeConfig,
+            DeezerConfig deezerConfig) {
         log.info("Loading SlugYZeoN plugin...");
 
         if (sourcesConfig.isGaana()) {
@@ -86,6 +89,13 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     spotifyConfig.isLocalFiles(),
                     unused -> manager);
         }
+        if (sourcesConfig.isDeezer()) {
+            this.deezer = new DeezerAudioSourceManager(
+                    deezerConfig.getApiUrl(),
+                    deezerConfig.getPlaylistLoadLimit(),
+                    deezerConfig.getAlbumLoadLimit(),
+                    deezerConfig.getArtistLoadLimit());
+        }
         if (sourcesConfig.isYoutube()) {
             String[] providers = (youtubeConfig.getMirrorProviders() != null && !youtubeConfig.getMirrorProviders().isEmpty())
                             ? youtubeConfig.getMirrorProviders().toArray(new String[0])
@@ -124,6 +134,10 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (spotify != null) {
             log.info("Registering Spotify audio source manager...");
             manager.registerSourceManager(spotify);
+        }
+        if (deezer != null) {
+            log.info("Registering Deezer audio source manager...");
+            manager.registerSourceManager(deezer);
         }
 
         return manager;
