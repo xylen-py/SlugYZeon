@@ -81,20 +81,51 @@ public class DeezerApiHandler {
         return fetchJson("/charts?limit=" + limit);
     }
 
-    /**
-     * Returns the direct stream URL for a Deezer track.
-     * The /stream/:id endpoint on the API serves fully decrypted MP3/FLAC audio
-     * with proper Content-Type and Content-Length headers — ready for Lavalink to consume.
-     */
+    public StreamInfo getStreamInfo(String trackId, String quality) {
+        try {
+            String path = "/stream/" + enc(trackId) + "/url";
+            if (quality != null && !quality.isEmpty()) {
+                path += "?quality=" + enc(quality);
+            }
+
+            JsonNode data = fetchJson(path);
+            if (data == null) {
+                return null;
+            }
+
+            String streamUrl = getTextSafe(data, "stream_url");
+            String blowfishKey = getTextSafe(data, "blowfish_key");
+
+            if (streamUrl == null || streamUrl.isEmpty()) {
+                return null;
+            }
+
+            return new StreamInfo(
+                    streamUrl,
+                    blowfishKey,
+                    getTextSafe(data, "quality"),
+                    data.has("content_length") ? data.get("content_length").asLong(0) : 0,
+                    data.has("encrypted") && data.get("encrypted").asBoolean(true),
+                    getTextSafe(data, "fallback_id"),
+                    getTextSafe(data, "legacy_url"),
+                    getTextSafe(data, "source")
+            );
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public StreamInfo getStreamInfo(String trackId) {
+        return getStreamInfo(trackId, "128");
+    }
+
+    @Deprecated
     public String getStreamUrl(String trackId) {
         return baseUrl + "/stream/" + trackId + "?quality=320";
     }
 
     private JsonNode fetchJson(String path) throws IOException {
-        String finalPath = path;
-
-        String url = baseUrl + finalPath;
-        log.debug("Deezer API request: {}", url);
+        String url = baseUrl + path;
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -126,12 +157,44 @@ public class DeezerApiHandler {
             Thread.currentThread().interrupt();
             return null;
         } catch (Exception e) {
-            log.debug("Deezer API request failed for {}: {}", finalPath, e.getMessage());
             return null;
         }
     }
 
+    private static String getTextSafe(JsonNode node, String field) {
+        if (node == null || !node.has(field) || node.get(field).isNull())
+            return null;
+        return node.get(field).asText(null);
+    }
+
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    public static class StreamInfo {
+        public final String streamUrl;
+        public final String blowfishKey;
+        public final String quality;
+        public final long contentLength;
+        public final boolean encrypted;
+        public final String fallbackId;
+        public final String legacyUrl;
+        public final String source;
+
+        public StreamInfo(String streamUrl, String blowfishKey, String quality, long contentLength,
+                boolean encrypted, String fallbackId, String legacyUrl, String source) {
+            this.streamUrl = streamUrl;
+            this.blowfishKey = blowfishKey;
+            this.quality = quality;
+            this.contentLength = contentLength;
+            this.encrypted = encrypted;
+            this.fallbackId = fallbackId;
+            this.legacyUrl = legacyUrl;
+            this.source = source;
+        }
+
+        public boolean requiresDecryption() {
+            return encrypted && blowfishKey != null && !blowfishKey.isEmpty();
+        }
     }
 }

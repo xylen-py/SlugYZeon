@@ -20,11 +20,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Deezer audio source manager with DIRECT streaming via the deezer-plugin-api.
- * Unlike Spotify/Gaana (which mirror through YouTube), this source streams
- * decrypted audio directly from the Deezer CDN via the API's /stream/:id endpoint.
- */
 public class DeezerAudioSourceManager implements AudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(DeezerAudioSourceManager.class);
@@ -42,12 +37,19 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
     private final int playlistLoadLimit;
     private final int albumLoadLimit;
     private final int artistLoadLimit;
+    private final String preferredQuality;
 
     public DeezerAudioSourceManager(String apiUrl, int playlistLoadLimit, int albumLoadLimit,
             int artistLoadLimit) {
+        this(apiUrl, playlistLoadLimit, albumLoadLimit, artistLoadLimit, "128");
+    }
+
+    public DeezerAudioSourceManager(String apiUrl, int playlistLoadLimit, int albumLoadLimit,
+            int artistLoadLimit, String preferredQuality) {
         this.playlistLoadLimit = playlistLoadLimit;
         this.albumLoadLimit = albumLoadLimit;
         this.artistLoadLimit = artistLoadLimit;
+        this.preferredQuality = preferredQuality != null ? preferredQuality : "128";
         this.api = new DeezerApiHandler(apiUrl);
         this.httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
     }
@@ -63,6 +65,10 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
 
     public HttpInterface getHttpInterface() {
         return httpInterfaceManager.getInterface();
+    }
+
+    public String getPreferredQuality() {
+        return preferredQuality;
     }
 
     @Override
@@ -378,7 +384,6 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
 
     @Override
     public void encodeTrack(AudioTrack track, DataOutput output) {
-        // No extra fields needed — track ID is sufficient to re-resolve the stream
     }
 
     @Override

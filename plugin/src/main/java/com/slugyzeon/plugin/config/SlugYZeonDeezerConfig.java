@@ -12,6 +12,7 @@ public class SlugYZeonDeezerConfig {
     private int albumLoadLimit = 50;
     private int artistLoadLimit = 50;
     private int searchLimit = 25;
+    private String quality = "128";
 
     public String getApiUrl() {
         return apiUrl;
@@ -51,5 +52,13 @@ public class SlugYZeonDeezerConfig {
 
     public void setSearchLimit(int searchLimit) {
         this.searchLimit = searchLimit;
+    }
+
+    public String getQuality() {
+        return quality;
+    }
+
+    public void setQuality(String quality) {
+        this.quality = quality;
     }
 }

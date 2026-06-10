@@ -94,7 +94,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     deezerConfig.getApiUrl(),
                     deezerConfig.getPlaylistLoadLimit(),
                     deezerConfig.getAlbumLoadLimit(),
-                    deezerConfig.getArtistLoadLimit());
+                    deezerConfig.getArtistLoadLimit(),
+                    deezerConfig.getQuality());
         }
         if (sourcesConfig.isYoutube()) {
             String[] providers = (youtubeConfig.getMirrorProviders() != null && !youtubeConfig.getMirrorProviders().isEmpty())

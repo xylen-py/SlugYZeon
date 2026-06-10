@@ -1,6 +1,7 @@
 package com.slugyzeon.plugin.deezer;
 
-import com.sedmelluq.discord.lavaplayer.container.mpeg.MpegAudioTrack;
+import com.sedmelluq.discord.lavaplayer.container.flac.FlacAudioTrack;
+import com.sedmelluq.discord.lavaplayer.container.mp3.Mp3AudioTrack;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
@@ -13,12 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.security.MessageDigest;
 
-/**
- * Deezer audio track that streams directly from the deezer-plugin-api's
- * /stream/:id endpoint, which returns fully decrypted audio (MP3/FLAC).
- * No mirroring — native Deezer playback.
- */
 public class DeezerAudioTrack extends DelegatedAudioTrack {
 
     private static final Logger log = LoggerFactory.getLogger(DeezerAudioTrack.class);
@@ -47,18 +44,43 @@ public class DeezerAudioTrack extends DelegatedAudioTrack {
 
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
-        String streamUrl = sourceManager.getApiHandler().getStreamUrl(trackInfo.identifier);
+        String quality = sourceManager.getPreferredQuality();
 
-        if (streamUrl == null || streamUrl.isEmpty()) {
-            throw new FriendlyException("Failed to resolve Deezer stream for track: " + trackInfo.title,
-                    FriendlyException.Severity.COMMON, null);
+        DeezerApiHandler.StreamInfo streamInfo = sourceManager.getApiHandler()
+                .getStreamInfo(trackInfo.identifier, quality);
+
+        if (streamInfo == null) {
+            if (!"128".equals(quality)) {
+                streamInfo = sourceManager.getApiHandler().getStreamInfo(trackInfo.identifier, "128");
+            }
+            if (streamInfo == null) {
+                throw new FriendlyException(
+                        "Failed to resolve Deezer stream for: " + trackInfo.title,
+                        FriendlyException.Severity.COMMON, null);
+            }
         }
 
-        log.debug("Streaming Deezer track {} from: {}", trackInfo.identifier, streamUrl);
-
         try (HttpInterface httpInterface = sourceManager.getHttpInterface()) {
-            try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), null)) {
-                processDelegate(new MpegAudioTrack(trackInfo, stream), executor);
+            URI streamUri = new URI(streamInfo.streamUrl);
+            Long contentLength = streamInfo.contentLength > 0 ? streamInfo.contentLength : null;
+
+            if (streamInfo.requiresDecryption()) {
+                byte[] decryptionKey = streamInfo.blowfishKey.getBytes("ISO-8859-1");
+
+                try (DeezerPersistentHttpStream stream = new DeezerPersistentHttpStream(
+                        httpInterface, streamUri, contentLength, decryptionKey)) {
+
+                    if ("FLAC".equalsIgnoreCase(streamInfo.quality)) {
+                        processDelegate(new FlacAudioTrack(trackInfo, stream), executor);
+                    } else {
+                        processDelegate(new Mp3AudioTrack(trackInfo, stream), executor);
+                    }
+                }
+            } else {
+                try (PersistentHttpStream stream = new PersistentHttpStream(
+                        httpInterface, streamUri, contentLength)) {
+                    processDelegate(new Mp3AudioTrack(trackInfo, stream), executor);
+                }
             }
         }
     }
