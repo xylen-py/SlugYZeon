@@ -114,7 +114,11 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
         if (query.isEmpty())
             return AudioReference.NO_TRACK;
 
-        JsonNode data = api.searchTracks(query, MAX_SEARCH_RESULTS);
+        JsonNode json = api.searchTracks(query, MAX_SEARCH_RESULTS);
+        if (json == null)
+            return AudioReference.NO_TRACK;
+
+        JsonNode data = json.has("data") ? json.get("data") : json;
         if (data == null || !data.isArray() || data.isEmpty())
             return AudioReference.NO_TRACK;
 
@@ -141,6 +145,10 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
             return AudioReference.NO_TRACK;
 
         JsonNode tracksNode = charts.has("tracks") ? charts.get("tracks") : charts;
+        if (tracksNode != null && tracksNode.isObject() && tracksNode.has("data")) {
+            tracksNode = tracksNode.get("data");
+        }
+        
         if (tracksNode == null || !tracksNode.isArray() || tracksNode.isEmpty())
             return AudioReference.NO_TRACK;
 
@@ -272,8 +280,14 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
 
     private JsonNode getTracksArray(JsonNode data) {
         for (String key : new String[] { "tracks", "top_tracks", "songs" }) {
-            if (data.has(key) && data.get(key).isArray())
-                return data.get(key);
+            if (data.has(key)) {
+                JsonNode node = data.get(key);
+                if (node.isArray()) {
+                    return node;
+                } else if (node.isObject() && node.has("data") && node.get("data").isArray()) {
+                    return node.get("data");
+                }
+            }
         }
         return null;
     }
