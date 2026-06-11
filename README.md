@@ -33,6 +33,26 @@
 
 ---
 
+<b>credits & special thanks</b>
+
+<br>
+
+**credits**<br>
+&nbsp;›&nbsp; **[xylen-py](https://github.com/xylen-py)** — for both plugin apis & sources for deezer & gaana<br>
+&nbsp;›&nbsp; **[saraansx](https://github.com/saraansx)** — for help with Spotify integration<br>
+
+<br>
+
+**special thanks**<br>
+&nbsp;›&nbsp; **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — for providing the official Lavalink plugin template<br>
+&nbsp;›&nbsp; **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — for the foundational mirroring architecture and code structure<br>
+&nbsp;›&nbsp; **[bongo-devs / jiosaavn-plugin](https://github.com/bongo-devs/jiosaavn-plugin)** — for the architecture of external proxy API sources<br>
+&nbsp;›&nbsp; **[notdeltaxd](https://github.com/notdeltaxd)** & **[1Lucas1apk](https://github.com/1Lucas1apk)** — for the pandora source token and api architecture
+
+<br>
+
+---
+
 <b>about</b>
 
 <br>
@@ -64,111 +84,13 @@ slugyzeon is a production-grade lavalink plugin providing **7 audio sources** fo
 | **amazon music** | `azsearch:` | tracks, albums, playlists, artists | partial | mirrored |
 | **instagram** | — | posts, reels, audio pages | — | native (mp4 cdn) |
 | **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | yes | mirrored |
-| **deezer** | `dzsearch:` / `dzrec:` | tracks, albums, playlists, artists | yes (isrc) | direct (api stream) |
+| **deezer** | `dzsearch:` / `dzrec:` | tracks, albums, playlists, artists | — | native stream (decrypted) |
 
 <br>
 
 ---
 
-<b>architecture</b>
-
-<br><br>
-
-```
-user request
-    |
-    v
-SlugYZeonPlugin (spring @service)
-    |
-    +-- source manager registered?
-    |       |
-    |       v
-    +-- spotify ─── GQL API (api-partner.spotify.com)
-    |       |           └── TOTP token (base32 nuance + server time sync)
-    |       |           └── persisted query hashes (remote-loaded, auto-updated)
-    |       |           └── spclient metadata → free ISRC for every track
-    |       |
-    +-- YouTube ─── wraps youtube-plugin (enhancer, NOT standalone)
-    |       |           └── delegates loadItem() to youtube-plugin
-    |       |           └── wraps tracks with direct scraper fallback on playback failure
-    |       |           └── fallback chain: watch page scrape → innertube API → mirror search
-    |       |
-    +-- gaana ───── external api → mirror resolve
-    +-- amazon ──── csrf scrape → mirror resolve
-    +-- instagram ─ graphql (xdt_shortcode_media) → native mp4
-    +-- pandora ──── token api / anon login → mirror resolve
-    +-- deezer ───── external api (deezer-plugin-api) → mirror resolve
-    |
-    v
-mirror system (ISRC-first → query fallback)
-    |
-    v
-audio playback
-```
-
-<br>
-
----
-
-<b>how spotify works — zero credentials</b>
-
-<br><br>
-
-```
-1. fetch nuance json ─── base32-encoded TOTP secret
-2. get spotify server time ─── /server-time endpoint
-3. generate RFC 6238 TOTP ─── 30s window, sha1, 6 digits
-4. exchange TOTP for access token ─── /api/token
-5. call GraphQL API ─── api-partner.spotify.com/pathfinder/v2/query
-```
-
-> no `clientId`, no `clientSecret`, no `sp_dc` cookie needed . it just works .
-
-<br>
-
----
-
-<b>how the youtube enhancer works</b>
-
-<br><br>
-
-```
-youtube track requested (ytsearch:, URL, etc.)
-    |
-    v
-youtube-plugin loads track (all clients: WEB, ANDROID, iOS, TV)
-    |
-    v
-Plugin wraps track in YouTubeTrack
-    |
-    v
-playback starts:
-    |
-    +── youtube-plugin plays → SUCCESS (normal playback)
-    |
-    +── youtube-plugin fails (login required, 403, bot detection)
-            |
-            v
-        Plugin direct scraper fallback:
-            |
-            +── scrape watch page (extract ytInitialPlayerResponse)
-            |       |
-            |       +── stream MP4/WebM audio → SUCCESS
-            |
-            +── try innertube clients (WEB_REMIX, TVHTML5)
-            |       |
-            |       +── stream MP4/WebM audio → SUCCESS
-            |
-            +── mirror search (scsearch, etc.)
-                    |
-                    +── play first match from other source → SUCCESS
-                    |
-                    +── all exhausted → throw FriendlyException
-```
-
-> The enhancer only activates when the youtube-plugin FAILS . normal playback is untouched . requires `youtube-plugin` to be loaded .
-
-<br>
+> **Note:** The YouTube enhancer requires the official [Lavalink YouTube Source Plugin](https://github.com/lavalink-devs/youtube-source) to be loaded in order to function.
 
 ---
 
@@ -229,7 +151,7 @@ plugins:
       albumLoadLimit: 50
       artistLoadLimit: 50
     pandora:
-      tokenApiUrl: "https://get.1lucas1apk.fun/pandora/gettoken"
+      tokenApiUrl: ""
       csrfToken: ""
       preferTokenApi: true
       searchLimit: 6
@@ -328,7 +250,7 @@ plugins:
 
   ```yaml
   pandora:
-    tokenApiUrl: "https://get.1lucas1apk.fun/pandora/gettoken"
+    tokenApiUrl: ""
     csrfToken: ""
     preferTokenApi: true
     searchLimit: 6
@@ -346,6 +268,7 @@ plugins:
     albumLoadLimit: 50
     artistLoadLimit: 50
     searchLimit: 25
+    quality: "128"      # 128, 320, or FLAC
   ```
 
   | field | default | description |
@@ -355,6 +278,7 @@ plugins:
   | `albumLoadLimit` | `50` | max tracks per album load |
   | `artistLoadLimit` | `50` | max tracks per artist load |
   | `searchLimit` | `25` | max search results |
+  | `quality` | `128` | stream quality (`128`, `320`, or `FLAC`) |
 </details>
 
 <br>
@@ -515,55 +439,14 @@ plugins:
 
 <br><br>
 
-<details>
-  <summary><b>&nbsp;›&nbsp; mirror system</b></summary>
-  <br>
-  &nbsp;›&nbsp; <b>ISRC-first</b> resolution for highest accuracy<br>
-  &nbsp;›&nbsp; automatic <b>query fallback</b> (artist + title search)<br>
-  &nbsp;›&nbsp; configurable provider chain<br>
-  &nbsp;›&nbsp; works across all mirrored sources (spotify, gaana, amazon, pandora, deezer)
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; spotify graphql api</b></summary>
-  <br>
-  &nbsp;›&nbsp; uses <code>api-partner.spotify.com/pathfinder/v2/query</code><br>
-  &nbsp;›&nbsp; persisted query hashes for <b>search, track, album, playlist, artist</b><br>
-  &nbsp;›&nbsp; <b>remote hash loading</b> — GQL hashes fetched from remote URL, always up to date<br>
-  &nbsp;›&nbsp; <b>300 tracks</b> per album in single call (vs 50 with REST)<br>
-  &nbsp;›&nbsp; <b>343 tracks</b> per playlist in single call<br>
-  &nbsp;›&nbsp; multi-path artist name + duration resolution
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; youtube direct playback</b></summary>
-  <br>
-  &nbsp;›&nbsp; <b>direct watch page scraping</b> bypassing consent/age walls<br>
-  &nbsp;›&nbsp; <b>innertube API fallback</b> (WEB_REMIX, TVHTML5) without credentials<br>
-  &nbsp;›&nbsp; last-resort mirror search on youtube music / soundcloud<br>
-  &nbsp;›&nbsp; handles both <b>MP4</b> and <b>WebM</b> audio containers natively<br>
-  &nbsp;›&nbsp; zero dependency on third party proxies or instances
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; instagram native playback</b></summary>
-  <br>
-  &nbsp;›&nbsp; auto-scrapes <b>CSRF, AppID, LSD</b> tokens from homepage<br>
-  &nbsp;›&nbsp; auto-<b>reinitializes</b> on token expiry<br>
-  &nbsp;›&nbsp; supports <b>posts, reels, audio pages</b><br>
-  &nbsp;›&nbsp; DASH manifest parsing for music assets<br>
-  &nbsp;›&nbsp; carousel (sidecar) support
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; rich metadata</b></summary>
-  <br>
-  &nbsp;›&nbsp; album name, album url, artist url, artist artwork<br>
-  &nbsp;›&nbsp; <b>ISRC codes</b> attached to every track for precise mirroring<br>
-  &nbsp;›&nbsp; extended playlists with type enum (ALBUM, PLAYLIST, ARTIST, RECOMMENDATIONS)<br>
-  &nbsp;›&nbsp; preview url for 30s clips<br>
-  &nbsp;›&nbsp; artwork upscaling
-</details>
+&nbsp;›&nbsp; **mirror system** — ISRC-first resolution with automatic query fallback for mirrored sources<br>
+&nbsp;›&nbsp; **spotify graphql api** — 0 credentials, remote hash loading, up to 343 tracks/call, bypasses rate limits<br>
+&nbsp;›&nbsp; **youtube enhancer** — direct watch page scraping, innertube fallback, bypassing age/consent walls<br>
+&nbsp;›&nbsp; **instagram native playback** — auto-scraped tokens with token rotation, supports posts, reels, audio pages<br>
+&nbsp;›&nbsp; **deezer native streaming** — direct CDN playback with on-the-fly blowfish decryption<br>
+&nbsp;›&nbsp; **rich metadata** — returns extended playlists, ISRC codes, album/artist URLs, and preview URLs<br>
+&nbsp;›&nbsp; **zero http dependencies** — relies entirely on Java's native `HttpClient` for maximal performance<br>
+&nbsp;›&nbsp; **seamless integration** — plugs directly into standard Lavalink 4.0+ via spring boot
 
 
 <br>
@@ -598,11 +481,11 @@ this plugin is provided for **educational and research purposes only** . it is a
 
 <br><br>
 
-licensed under the **MIT license** .
+licensed under the **Apache License 2.0** .
 
 &nbsp;›&nbsp; you **can** use, modify, and distribute this software<br>
 &nbsp;›&nbsp; you **can** use it in commercial projects<br>
-&nbsp;›&nbsp; you **must** include the license notice
+&nbsp;›&nbsp; you **must** include the license notice, state changes, and provide original copyright
 
 see [LICENSE](LICENSE) for full details .
 

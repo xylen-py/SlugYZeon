@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class PandoraConfig {
 
-    private String tokenApiUrl = "https://get.1lucas1apk.fun/pandora/gettoken";
+    private String tokenApiUrl = "";
     private String csrfToken = "";
     private boolean preferTokenApi = true;
     private int searchLimit = 6;

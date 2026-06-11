@@ -279,7 +279,10 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
     }
 
     private JsonNode getTracksArray(JsonNode data) {
-        for (String key : new String[] { "tracks", "top_tracks", "songs" }) {
+        if (data.has("data") && data.get("data").isObject()) {
+            data = data.get("data");
+        }
+        for (String key : new String[] { "tracks", "top_tracks", "songs", "data" }) {
             if (data.has(key)) {
                 JsonNode node = data.get(key);
                 if (node.isArray()) {
@@ -288,6 +291,9 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
                     return node.get("data");
                 }
             }
+        }
+        if (data.isArray()) {
+            return data;
         }
         return null;
     }
