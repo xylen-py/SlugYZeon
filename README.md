@@ -19,7 +19,7 @@
 
 <img src="https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java" />
 <img src="https://img.shields.io/badge/Lavalink-4.0+-7289DA?style=for-the-badge" alt="Lavalink" />
-<img src="https://img.shields.io/badge/License-MIT-764ba2?style=for-the-badge" alt="License" />
+<img src="https://img.shields.io/badge/License-Apache_2.0-764ba2?style=for-the-badge" alt="License" />
 <img src="https://img.shields.io/badge/Sources-8-667eea?style=for-the-badge" alt="Sources" />
 <img src="https://img.shields.io/badge/HTTP_Deps-Zero-00C853?style=for-the-badge" alt="Zero Deps" />
 
