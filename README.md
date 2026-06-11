@@ -37,6 +37,12 @@
 
 <br>
 
+**acknowledgments**<br>
+&nbsp;›&nbsp; **[PerformanC / NodeLink](https://github.com/PerformanC/NodeLink)** — for the Amazon Music `BOT_UA` test key.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*(Note: This plugin does not use any code from NodeLink and is built entirely on the LavaSrc architecture. The user agent was a leftover test component that remained in the production code, and proper credit is provided here.)*<br>
+
+<br>
+
 **credits**<br>
 &nbsp;›&nbsp; **[xylen-py](https://github.com/xylen-py)** — for both plugin apis & sources for deezer & gaana<br>
 &nbsp;›&nbsp; **[saraansx](https://github.com/saraansx)** — for help with Spotify integration<br>
