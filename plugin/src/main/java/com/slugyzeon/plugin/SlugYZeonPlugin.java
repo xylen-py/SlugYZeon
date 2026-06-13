@@ -78,9 +78,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (sourcesConfig.isSpotify()) {
             this.spotify = new SpotifyAudioSourceManager(
                     DEFAULT_PROVIDERS,
-                    spotifyConfig.getClientId(),
-                    spotifyConfig.getClientSecret(),
-                    spotifyConfig.getSpDc(),
                     spotifyConfig.getCountryCode(),
                     spotifyConfig.getPlaylistLoadLimit(),
                     spotifyConfig.getAlbumLoadLimit(),

@@ -3,7 +3,6 @@ package com.slugyzeon.plugin.spotify;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.*;
@@ -16,11 +15,9 @@ import org.slf4j.LoggerFactory;
 import java.io.DataInput;
 import java.io.IOException;
 import java.net.URI;
-
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,12 +72,11 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
-    public SpotifyAudioSourceManager(String[] providers, String clientId, String clientSecret,
-            String spDc, String countryCode, int playlistPageLimit,
+    public SpotifyAudioSourceManager(String[] providers, String countryCode, int playlistPageLimit,
             int albumPageLimit, boolean resolveArtistsInSearch, boolean localFiles,
             Function<Void, AudioPlayerManager> manager) {
         super(manager, new DefaultMirroringAudioTrackResolver(providers));
-        this.tokenTracker = new SpotifyTokenTracker(clientId, clientSecret, spDc);
+        this.tokenTracker = new SpotifyTokenTracker();
         this.countryCode = (countryCode == null || countryCode.isEmpty()) ? "US" : countryCode;
         this.playlistPageLimit = playlistPageLimit > 0 ? playlistPageLimit : 6;
         this.albumPageLimit = albumPageLimit > 0 ? albumPageLimit : 6;
@@ -227,13 +223,6 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return tokenTracker.getAnonymousAccessToken();
     }
 
-    private String getRestToken() throws IOException {
-        if (!tokenTracker.hasValidCredentials()) {
-            return null;
-        }
-        return tokenTracker.getAccessToken(false);
-    }
-
     private JsonNode gqlQuery(String operationName, String hash, ObjectNode variables) throws IOException {
         ObjectNode body = mapper.createObjectNode();
         body.set("variables", variables);
@@ -303,10 +292,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
     private JsonNode getRestJson(String url) throws IOException {
         try {
-            String token = getRestToken();
-            if (token == null)
-                token = getToken();
-
+            String token = getToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(15))

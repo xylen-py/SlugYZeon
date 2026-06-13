@@ -13,24 +13,20 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 
 public class SpotifyTokenTracker {
 
     private static final Logger log = LoggerFactory.getLogger(SpotifyTokenTracker.class);
 
-    private static final String SPOTIFY_ACCOUNTS_TOKEN = "https://accounts.spotify.com/api/token";
     private static final String SPOTIFY_TOKEN_URL = "https://open.spotify.com/api/token";
     private static final String SPOTIFY_SERVER_TIME = "https://open.spotify.com/api/server-time";
     private static final String NUANCE_URL = "https://gist.githubusercontent.com/saraansx/a622d4c1a12c36afdcf701201e9482a3/raw/9afe2c9c7d1a5eb3f7a05d0002a94f45b73682d0/nuance.json";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.6998.178 Spotify/1.2.65.255 Safari/537.36";
 
-    private static final int MAX_RETRIES = 2;
     private static final long TOKEN_EXPIRY_BUFFER_SECONDS = 120;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -39,56 +35,14 @@ public class SpotifyTokenTracker {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
-    private final String clientId;
-    private final String clientSecret;
-    private final String spDc;
-
-    private volatile String accessToken;
-    private volatile Instant accessTokenExpires;
-
     private volatile String anonymousAccessToken;
     private volatile Instant anonymousExpires;
-
-    private volatile String accountAccessToken;
-    private volatile Instant accountAccessTokenExpires;
 
     private volatile String cachedNuanceSecret;
     private volatile int cachedNuanceVersion;
     private volatile Instant cachedNuanceExpires;
 
-    public SpotifyTokenTracker(String clientId, String clientSecret, String spDc) {
-        this.clientId = clientId;
-        this.clientSecret = clientSecret;
-        this.spDc = spDc;
-
-        if (!hasValidCredentials()) {
-            log.debug("Spotify invalid credentials, falling back to public token.");
-        }
-        if (!hasValidAccountCredentials()) {
-            log.debug("Spotify invalid sp_dc account credentials.");
-        }
-    }
-
-    public boolean hasValidCredentials() {
-        return clientId != null && !clientId.isEmpty() && clientSecret != null && !clientSecret.isEmpty();
-    }
-
-    public boolean hasValidAccountCredentials() {
-        return spDc != null && !spDc.isEmpty();
-    }
-
-    public String getAccessToken(boolean preferAnonymous) throws IOException {
-        if (preferAnonymous || !hasValidCredentials()) {
-            return getAnonymousAccessToken();
-        }
-        if (isExpired(this.accessToken, this.accessTokenExpires)) {
-            synchronized (this) {
-                if (isExpired(this.accessToken, this.accessTokenExpires)) {
-                    refreshAccessToken();
-                }
-            }
-        }
-        return this.accessToken;
+    public SpotifyTokenTracker() {
     }
 
     public String getAnonymousAccessToken() throws IOException {
@@ -102,65 +56,15 @@ public class SpotifyTokenTracker {
         return this.anonymousAccessToken;
     }
 
-    public String getAccountAccessToken() throws IOException {
-        if (!hasValidAccountCredentials()) {
-            throw new IOException("Spotify sp_dc is not configured");
-        }
-        if (isExpired(this.accountAccessToken, this.accountAccessTokenExpires)) {
-            synchronized (this) {
-                if (isExpired(this.accountAccessToken, this.accountAccessTokenExpires)) {
-                    refreshAccountAccessToken();
-                }
-            }
-        }
-        return this.accountAccessToken;
-    }
-
     private boolean isExpired(String token, Instant expires) {
         return token == null || expires == null || expires.isBefore(Instant.now());
-    }
-
-    private void refreshAccessToken() throws IOException {
-        String auth = Base64.getEncoder().encodeToString(
-                (clientId + ":" + clientSecret).getBytes(StandardCharsets.UTF_8));
-
-        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-            try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(SPOTIFY_ACCOUNTS_TOKEN))
-                        .timeout(Duration.ofSeconds(15))
-                        .header("Authorization", "Basic " + auth)
-                        .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(HttpRequest.BodyPublishers.ofString("grant_type=client_credentials"))
-                        .build();
-
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() != 200) {
-                    if (attempt < MAX_RETRIES) {
-                        Thread.sleep(500L * (attempt + 1));
-                        continue;
-                    }
-                    throw new IOException("Spotify OAuth returned status " + response.statusCode());
-                }
-
-                JsonNode json = mapper.readTree(response.body());
-                this.accessToken = json.get("access_token").asText();
-                long expiresIn = json.path("expires_in").asLong(3600);
-                this.accessTokenExpires = Instant.now()
-                        .plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
-                return;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Interrupted", e);
-            }
-        }
     }
 
     private void refreshAnonymousAccessToken() throws IOException {
         IOException lastException = null;
 
         try {
-            fetchTokenWithTOTP(null);
+            fetchTokenWithTOTP();
             return;
         } catch (IOException e) {
             lastException = e;
@@ -169,20 +73,7 @@ public class SpotifyTokenTracker {
         throw new IOException("All Spotify token methods failed", lastException);
     }
 
-    private void refreshAccountAccessToken() throws IOException {
-        try {
-            fetchTokenWithTOTP("sp_dc=" + this.spDc);
-        } catch (IOException e) {
-            try {
-                String url = SPOTIFY_TOKEN_URL + "?reason=transport&productType=web-player";
-                fetchAccountTokenFromUrl(url);
-            } catch (IOException e2) {
-                throw new IOException("Account token refresh failed", e2);
-            }
-        }
-    }
-
-    private void fetchTokenWithTOTP(String cookie) throws IOException {
+    private void fetchTokenWithTOTP() throws IOException {
         String[] nuance = getOrFetchNuance();
         String secret = nuance[0];
         int version = Integer.parseInt(nuance[1]);
@@ -198,14 +89,10 @@ public class SpotifyTokenTracker {
                 + "&totpVer=" + version
                 + "&ts=" + System.currentTimeMillis();
 
-        if (cookie != null) {
-            fetchAccountTokenFromUrlWithCookie(url, cookie);
-        } else {
-            fetchTokenFromUrl(url, null);
-        }
+        fetchTokenFromUrl(url);
     }
 
-    private void fetchTokenFromUrl(String url, String cookie) throws IOException {
+    private void fetchTokenFromUrl(String url) throws IOException {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(url))
@@ -213,10 +100,6 @@ public class SpotifyTokenTracker {
                     .header("User-Agent", USER_AGENT)
                     .header("App-Platform", "WebPlayer")
                     .GET();
-
-            if (cookie != null) {
-                builder.header("Cookie", cookie);
-            }
 
             HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
@@ -246,43 +129,6 @@ public class SpotifyTokenTracker {
 
             this.anonymousAccessToken = token;
             this.anonymousExpires = expiry;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted", e);
-        }
-    }
-
-    private void fetchAccountTokenFromUrl(String url) throws IOException {
-        fetchAccountTokenFromUrlWithCookie(url, "sp_dc=" + this.spDc);
-    }
-
-    private void fetchAccountTokenFromUrlWithCookie(String url, String cookie) throws IOException {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("User-Agent", USER_AGENT)
-                    .header("App-Platform", "WebPlayer")
-                    .header("Cookie", cookie)
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new IOException("Account token returned " + response.statusCode());
-            }
-
-            JsonNode json = mapper.readTree(response.body());
-            String token = json.path("accessToken").asText(null);
-            if (token == null) {
-                throw new IOException("No account token in response");
-            }
-
-            long expiresMs = json.path("accessTokenExpirationTimestampMs").asLong(0);
-            this.accountAccessToken = token;
-            this.accountAccessTokenExpires = expiresMs > 0
-                    ? Instant.ofEpochMilli(expiresMs).minusSeconds(TOKEN_EXPIRY_BUFFER_SECONDS)
-                    : Instant.now().plusSeconds(3600 - TOKEN_EXPIRY_BUFFER_SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted", e);

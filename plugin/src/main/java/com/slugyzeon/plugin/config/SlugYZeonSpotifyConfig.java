@@ -6,39 +6,11 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "plugins.slugyzeon.spotify")
 @Component
 public class SlugYZeonSpotifyConfig {
-
-    private String clientId = "";
-    private String clientSecret = "";
-    private String spDc = "";
     private String countryCode = "US";
     private int playlistLoadLimit = 6;
     private int albumLoadLimit = 6;
     private boolean resolveArtistsInSearch = true;
     private boolean localFiles = false;
-
-    public String getClientId() {
-        return clientId;
-    }
-
-    public void setClientId(String clientId) {
-        this.clientId = clientId;
-    }
-
-    public String getClientSecret() {
-        return clientSecret;
-    }
-
-    public void setClientSecret(String clientSecret) {
-        this.clientSecret = clientSecret;
-    }
-
-    public String getSpDc() {
-        return spDc;
-    }
-
-    public void setSpDc(String spDc) {
-        this.spDc = spDc;
-    }
 
     public String getCountryCode() {
         return countryCode;
