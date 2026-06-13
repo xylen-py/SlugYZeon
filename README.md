@@ -86,7 +86,7 @@ slugyzeon is a production-grade lavalink plugin providing **7 audio sources** fo
 |--------|--------|-------------|----------------|----------|
 | **spotify** | `spsearch:` / `sprec:` | tracks, albums, playlists, artists | yes (spclient) | mirrored |
 | **youtube** | wraps youtube-plugin | enhances all youtube playback | — | direct scraper fallback |
-| **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | yes | mirrored |
+| **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | — | native stream (hls segments) |
 | **amazon music** | `azsearch:` | tracks, albums, playlists, artists | partial | mirrored |
 | **instagram** | — | posts, reels, audio pages | — | native (mp4 cdn) |
 | **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | yes | mirrored |
@@ -448,6 +448,7 @@ plugins:
 &nbsp;›&nbsp; **mirror system** — ISRC-first resolution with automatic query fallback for mirrored sources<br>
 &nbsp;›&nbsp; **spotify graphql api** — 0 credentials, remote hash loading, up to 343 tracks/call, bypasses rate limits<br>
 &nbsp;›&nbsp; **youtube enhancer** — direct watch page scraping, innertube fallback, bypassing age/consent walls<br>
+&nbsp;›&nbsp; **gaana native streaming** — fully persistent HLS chunk buffering directly from Akamai CDN<br>
 &nbsp;›&nbsp; **instagram native playback** — auto-scraped tokens with token rotation, supports posts, reels, audio pages<br>
 &nbsp;›&nbsp; **deezer native streaming** — direct CDN playback with on-the-fly blowfish decryption<br>
 &nbsp;›&nbsp; **rich metadata** — returns extended playlists, ISRC codes, album/artist URLs, and preview URLs<br>
