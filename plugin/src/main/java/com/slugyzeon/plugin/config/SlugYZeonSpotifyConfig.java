@@ -11,7 +11,6 @@ public class SlugYZeonSpotifyConfig {
     private String clientSecret = "";
     private String spDc = "";
     private String countryCode = "US";
-    private String nuanceUrl = "";
     private int playlistLoadLimit = 6;
     private int albumLoadLimit = 6;
     private boolean resolveArtistsInSearch = true;
@@ -47,14 +46,6 @@ public class SlugYZeonSpotifyConfig {
 
     public void setCountryCode(String countryCode) {
         this.countryCode = countryCode;
-    }
-
-    public String getNuanceUrl() {
-        return nuanceUrl;
-    }
-
-    public void setNuanceUrl(String nuanceUrl) {
-        this.nuanceUrl = nuanceUrl;
     }
 
     public int getPlaylistLoadLimit() {

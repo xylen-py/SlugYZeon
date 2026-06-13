@@ -42,7 +42,6 @@ public class SpotifyTokenTracker {
     private final String clientId;
     private final String clientSecret;
     private final String spDc;
-    private final String nuanceUrl;
 
     private volatile String accessToken;
     private volatile Instant accessTokenExpires;
@@ -57,11 +56,10 @@ public class SpotifyTokenTracker {
     private volatile int cachedNuanceVersion;
     private volatile Instant cachedNuanceExpires;
 
-    public SpotifyTokenTracker(String clientId, String clientSecret, String spDc, String nuanceUrl) {
+    public SpotifyTokenTracker(String clientId, String clientSecret, String spDc) {
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.spDc = spDc;
-        this.nuanceUrl = nuanceUrl;
 
         if (!hasValidCredentials()) {
             log.debug("Spotify invalid credentials, falling back to public token.");
@@ -328,7 +326,7 @@ public class SpotifyTokenTracker {
             return new String[] { cachedNuanceSecret, String.valueOf(cachedNuanceVersion) };
         }
 
-        String url = (nuanceUrl != null && !nuanceUrl.isBlank()) ? nuanceUrl : NUANCE_URL;
+        String url = NUANCE_URL;
 
         try {
             HttpRequest request = HttpRequest.newBuilder()

@@ -24,10 +24,7 @@ public class AmazonMusicApiHandler {
     private static final Logger log = LoggerFactory.getLogger(AmazonMusicApiHandler.class);
 
     private static final String BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
-    // Credits: The BOT_UA value uses a test key provided by PerformanC/NodeLink.
-    // Note: No code from NodeLink is used here, as this plugin relies entirely on the LavaSrc architecture.
-    // This UA was a leftover test component that remained in production.
-    private static final String BOT_UA = "Mozilla/5.0 (compatible; NodeLinkBot/0.1; +https://nodelink.js.org/)";
+
     private static final long CONFIG_TTL_MS = 120_000;
     private static final int MAX_RETRIES = 2;
 
@@ -280,7 +277,7 @@ public class AmazonMusicApiHandler {
     public Map<String, Object> fetchFromPage(String url, String targetId) throws IOException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("User-Agent", BOT_UA)
+                .header("User-Agent", BROWSER_UA)
                 .header("Accept", "text/html")
                 .timeout(Duration.ofSeconds(15))
                 .GET().build();

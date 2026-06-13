@@ -73,20 +73,20 @@ lavalink:
 plugins:
   slugyzeon:
     sources:
-      gaana: false # Enable Gaana source
-      amazonmusic: false # Enable Amazon Music source
-      instagram: false # Enable Instagram source
-      pandora: false # Enable Pandora source
-      spotify: false # Enable Spotify source
-      youtube: false # Enable YouTube fallback source
-      deezer: false # Enable Deezer source
+      # Set to true to enable the specific source
+      gaana: false
+      amazonmusic: false
+      instagram: false
+      pandora: false
+      spotify: false
+      youtube: false
+      deezer: false
     spotify:
       # clientId & clientSecret are completely optional. By default, TOTP generation is used for zero rate limits.
       # clientId: "your client id"
       # clientSecret: "your client secret"
       # spDc: "your sp dc cookie" # the sp_dc cookie used for accessing account-level features. (Go to open.spotify.com, Application Tab -> Cookies -> sp_dc)
       countryCode: "US" # the country code for filtering artist top tracks
-      nuanceUrl: "" # custom nuance json url (uses built-in automatically if left blank)
       playlistLoadLimit: 6 # The number of pages at 100 tracks each
       albumLoadLimit: 6 # The number of pages at 50 tracks each
       resolveArtistsInSearch: true # Whether to resolve artists in track search results
