@@ -148,7 +148,6 @@ public class SpotifyTokenTracker {
                 long expiresIn = json.path("expires_in").asLong(3600);
                 this.accessTokenExpires = Instant.now()
                         .plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
-                log.info("Spotify token refreshed via client credentials ({}s)", expiresIn);
                 return;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -162,11 +161,9 @@ public class SpotifyTokenTracker {
 
         try {
             fetchTokenWithTOTP(null);
-            log.info("Spotify anonymous token refreshed via TOTP (v{})", cachedNuanceVersion);
             return;
         } catch (IOException e) {
             lastException = e;
-            log.debug("TOTP token failed: {}", e.getMessage());
         }
 
         throw new IOException("All Spotify token methods failed", lastException);
@@ -175,12 +172,10 @@ public class SpotifyTokenTracker {
     private void refreshAccountAccessToken() throws IOException {
         try {
             fetchTokenWithTOTP("sp_dc=" + this.spDc);
-            log.info("Spotify account token refreshed via sp_dc + TOTP");
         } catch (IOException e) {
             try {
                 String url = SPOTIFY_TOKEN_URL + "?reason=transport&productType=web-player";
                 fetchAccountTokenFromUrl(url);
-                log.info("Spotify account token refreshed via sp_dc direct");
             } catch (IOException e2) {
                 throw new IOException("Account token refresh failed", e2);
             }

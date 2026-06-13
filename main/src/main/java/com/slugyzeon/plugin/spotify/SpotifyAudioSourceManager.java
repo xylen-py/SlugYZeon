@@ -155,6 +155,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
         try {
             String identifier = reference.identifier;
+            log.info("[Spotify] Step 1: Processing Request for '{}'", identifier);
+            
             boolean preview = identifier.startsWith(PREVIEW_PREFIX);
             if (preview) {
                 identifier = identifier.substring(PREVIEW_PREFIX.length());
@@ -331,6 +333,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         java.util.Map<String, String> isrcMap = new java.util.concurrent.ConcurrentHashMap<>();
         if (trackIds == null || trackIds.isEmpty())
             return isrcMap;
+            
+        log.info("[Spotify] Step 3: Extracting ISRC codes via spclient for {} tracks...", trackIds.size());
 
         String token;
         try {
@@ -415,6 +419,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getTrack(String id, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Track Metadata via GraphQL for ID '{}'", id);
         ObjectNode vars = mapper.createObjectNode();
         vars.put("uri", "spotify:track:" + id);
 
@@ -434,6 +439,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getSearch(String query, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Search Metadata via GraphQL for Query '{}'", query);
         ObjectNode vars = mapper.createObjectNode();
         vars.put("searchTerm", query);
         vars.put("offset", 0);
@@ -483,6 +489,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getRecommendations(String query, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Recommendations via REST API for Query '{}'", query);
         Matcher mixMatcher = RADIO_MIX_QUERY_PATTERN.matcher(query);
         if (mixMatcher.find()) {
             String seedType = mixMatcher.group("seedType");
@@ -527,6 +534,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getAlbum(String id, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Album Metadata via GraphQL for ID '{}'", id);
         ObjectNode vars = mapper.createObjectNode();
         vars.put("uri", "spotify:album:" + id);
         vars.put("locale", "en");
@@ -628,6 +636,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getPlaylist(String id, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Playlist Metadata via GraphQL for ID '{}'", id);
         ObjectNode vars = mapper.createObjectNode();
         vars.put("uri", "spotify:playlist:" + id);
         vars.put("offset", 0);
@@ -693,6 +702,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getArtist(String id, boolean preview) throws IOException {
+        log.info("[Spotify] Step 2: Fetching Artist Metadata via GraphQL for ID '{}'", id);
         ObjectNode vars = mapper.createObjectNode();
         vars.put("uri", "spotify:artist:" + id);
         vars.put("locale", "en");
@@ -827,6 +837,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 artworkUrl,
                 isrc);
 
+        log.info("[Spotify] Step 4: Successfully resolved metadata and ISRC ({}) for Track '{}'", isrc != null ? isrc : "N/A", title);
         return new SpotifyAudioTrack(info, albumName, albumUrl, artistUrl, artistArtwork,
                 null, preview, this);
     }
@@ -876,7 +887,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 trackUrl,
                 artworkUrl,
                 isrc);
-
+        log.info("[Spotify] Step 4: Successfully resolved metadata and ISRC ({}) for Track '{}'", isrc != null ? isrc : "N/A", title);
         return new SpotifyAudioTrack(info, albumName, albumUrl, artistUrl, artistArtwork,
                 null, preview, this);
     }
@@ -910,6 +921,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 artworkUrl,
                 isrc);
 
+        log.info("[Spotify] Step 4: Successfully resolved metadata and ISRC ({}) via REST for Track '{}'", isrc != null ? isrc : "N/A", title);
         return new SpotifyAudioTrack(trackInfo, albumName, albumUrl, artistUrl, null, previewUrl, preview, this);
     }
 
