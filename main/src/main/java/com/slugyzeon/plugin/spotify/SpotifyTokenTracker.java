@@ -305,7 +305,6 @@ public class SpotifyTokenTracker {
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                log.debug("Server time endpoint returned {}, using local time", response.statusCode());
                 return System.currentTimeMillis() / 1000;
             }
 
@@ -363,7 +362,6 @@ public class SpotifyTokenTracker {
             cachedNuanceVersion = bestVersion;
             cachedNuanceExpires = Instant.now().plusSeconds(3600);
 
-            log.debug("Fetched nuance secret (version {}, length {})", bestVersion, bestSecret.length());
             return new String[] { bestSecret, String.valueOf(bestVersion) };
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
