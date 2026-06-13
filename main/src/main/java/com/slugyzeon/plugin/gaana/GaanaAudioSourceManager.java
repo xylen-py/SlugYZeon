@@ -2,23 +2,30 @@ package com.slugyzeon.plugin.gaana;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
+import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpConfigurable;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
+import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterfaceManager;
 import com.sedmelluq.discord.lavaplayer.track.*;
 import com.slugyzeon.plugin.ExtendedAudioPlaylist;
-import com.slugyzeon.plugin.mirror.DefaultMirroringAudioTrackResolver;
-import com.slugyzeon.plugin.mirror.MirroringAudioSourceManager;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
+public class GaanaAudioSourceManager implements AudioSourceManager, HttpConfigurable {
 
     private static final Logger log = LoggerFactory.getLogger(GaanaAudioSourceManager.class);
 
@@ -30,6 +37,7 @@ public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
     public static final Pattern URL_PATTERN = Pattern.compile(
             "^@?(?:https?://)?(?:www\\.)?gaana\\.com/(?<type>song|album|playlist|artist)/(?<seokey>[\\w-]+)(?:[?#].*)?$");
 
+    private final HttpInterfaceManager httpInterfaceManager;
     private final GaanaApiHandler api;
     private final int playlistLoadLimit;
     private final int albumLoadLimit;
@@ -37,16 +45,11 @@ public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
 
     public GaanaAudioSourceManager(String[] providers, String apiUrl, int playlistLoadLimit, int albumLoadLimit,
             int artistLoadLimit, Function<Void, AudioPlayerManager> manager) {
-        super(manager, new DefaultMirroringAudioTrackResolver(providers));
+        this.httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
         this.playlistLoadLimit = playlistLoadLimit;
         this.albumLoadLimit = albumLoadLimit;
         this.artistLoadLimit = artistLoadLimit;
         this.api = new GaanaApiHandler(apiUrl);
-    }
-
-    @Override
-    public AudioPlayerManager getAudioPlayerManager() {
-        return this.audioPlayerManager.apply(null);
     }
 
     @Override
@@ -305,7 +308,7 @@ public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
         String artistUrl = parseArtistUrl(node);
 
         AudioTrackInfo info = new AudioTrackInfo(title, author, duration, identifier, false, uri, artworkUrl, isrc);
-        return new GaanaAudioTrack(info, albumName, albumUrl, artistUrl, null, null, false, this);
+        return new GaanaAudioTrack(info, albumName, albumUrl, artistUrl, null, null, this);
     }
 
     private String parseArtworkUrl(JsonNode node) {
@@ -354,16 +357,57 @@ public class GaanaAudioSourceManager extends MirroringAudioSourceManager {
         return api;
     }
 
+    public HttpInterface getHttpInterface() {
+        return httpInterfaceManager.getInterface();
+    }
+
+    @Override
+    public void configureRequests(Function<RequestConfig, RequestConfig> configurator) {
+        httpInterfaceManager.configureRequests(configurator);
+    }
+
+    @Override
+    public void configureBuilder(Consumer<HttpClientBuilder> configurator) {
+        httpInterfaceManager.configureBuilder(configurator);
+    }
+
+    @Override
+    public boolean isTrackEncodable(AudioTrack track) {
+        return true;
+    }
+
+    @Override
+    public void encodeTrack(AudioTrack track, DataOutput output) throws IOException {
+        GaanaAudioTrack gaanaTrack = (GaanaAudioTrack) track;
+        output.writeUTF(gaanaTrack.getAlbumName() != null ? gaanaTrack.getAlbumName() : "");
+        output.writeUTF(gaanaTrack.getAlbumUrl() != null ? gaanaTrack.getAlbumUrl() : "");
+        output.writeUTF(gaanaTrack.getArtistUrl() != null ? gaanaTrack.getArtistUrl() : "");
+        output.writeUTF(gaanaTrack.getArtistArtworkUrl() != null ? gaanaTrack.getArtistArtworkUrl() : "");
+        output.writeUTF(gaanaTrack.getPreviewUrl() != null ? gaanaTrack.getPreviewUrl() : "");
+    }
+
     @Override
     public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
-        var extendedAudioTrackInfo = super.decodeTrack(input);
+        String albumName = input.readUTF();
+        String albumUrl = input.readUTF();
+        String artistUrl = input.readUTF();
+        String artistArtworkUrl = input.readUTF();
+        String previewUrl = input.readUTF();
         return new GaanaAudioTrack(trackInfo,
-                extendedAudioTrackInfo.albumName,
-                extendedAudioTrackInfo.albumUrl,
-                extendedAudioTrackInfo.artistUrl,
-                extendedAudioTrackInfo.artistArtworkUrl,
-                extendedAudioTrackInfo.previewUrl,
-                extendedAudioTrackInfo.isPreview,
+                albumName.isEmpty() ? null : albumName,
+                albumUrl.isEmpty() ? null : albumUrl,
+                artistUrl.isEmpty() ? null : artistUrl,
+                artistArtworkUrl.isEmpty() ? null : artistArtworkUrl,
+                previewUrl.isEmpty() ? null : previewUrl,
                 this);
+    }
+    
+    @Override
+    public void shutdown() {
+        try {
+            httpInterfaceManager.close();
+        } catch (IOException e) {
+            log.error("Failed to close HTTP interface manager", e);
+        }
     }
 }
