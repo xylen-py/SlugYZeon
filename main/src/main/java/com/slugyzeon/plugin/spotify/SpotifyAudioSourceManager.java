@@ -435,7 +435,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         if (track.isMissingNode())
             return AudioReference.NO_TRACK;
 
-        return parseGqlTrack(track, id, preview);
+        java.util.Map<String, String> isrcMap = fetchIsrcMap(List.of(id));
+        return parseGqlTrackWithIsrc(track, id, preview, isrcMap.get(id));
     }
 
     public AudioItem getSearch(String query, boolean preview) throws IOException {
