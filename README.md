@@ -1,108 +1,60 @@
-<div align="center">
+[![](https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)](https://java.com)
+[![](https://img.shields.io/badge/Lavalink-4.0+-7289DA?style=for-the-badge)](https://github.com/lavalink-devs/Lavalink)
+[![](https://img.shields.io/badge/License-Apache_2.0-764ba2?style=for-the-badge)](LICENSE)
+[![](https://img.shields.io/badge/Sources-8-667eea?style=for-the-badge)](#sources)
+[![](https://img.shields.io/badge/HTTP_Deps-Zero-00C853?style=for-the-badge)](#features)
 
-```
-     ███████╗    ██╗       ██╗   ██╗     ██████╗     ██╗   ██╗    ███████╗    ███████╗     ██████╗     ███╗   ██╗
-     ██╔════╝    ██║       ██║   ██║    ██╔════╝     ╚██╗ ██╔╝    ╚══███╔╝    ██╔════╝    ██╔═══██╗    ████╗  ██║
-     ███████╗    ██║       ██║   ██║    ██║  ███╗     ╚████╔╝       ███╔╝     █████╗      ██║   ██║    ██╔██╗ ██║
-     ╚════██║    ██║       ██║   ██║    ██║   ██║      ╚██╔╝       ███╔╝      ██╔══╝      ██║   ██║    ██║╚██╗██║
-     ███████║    ███████╗  ╚██████╔╝    ╚██████╔╝       ██║       ███████╗    ███████╗    ╚██████╔╝    ██║ ╚████║
-     ╚══════╝    ╚══════╝   ╚═════╝      ╚═════╝        ╚═╝       ╚══════╝    ╚══════╝     ╚═════╝     ╚═╝  ╚═══╝
-```
+# SlugYZeon
 
-<h2 align="center">
-  <span>「 S L U G Y Z E O N 」</span>
-</h2>
+> [!NOTE]
+> Multi-source lavalink plugin featuring 7 audio sources, zero rate limits, and zero credentials needed. Built entirely with Java's native `HttpClient`.
 
-<p align="center">
-  <i>multi-source lavalink plugin — 7 audio sources, zero rate limits, zero credentials needed</i>
-</p>
+## Summary
 
-<img src="https://img.shields.io/badge/Java-17+-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java" />
-<img src="https://img.shields.io/badge/Lavalink-4.0+-7289DA?style=for-the-badge" alt="Lavalink" />
-<img src="https://img.shields.io/badge/License-Apache_2.0-764ba2?style=for-the-badge" alt="License" />
-<img src="https://img.shields.io/badge/Sources-8-667eea?style=for-the-badge" alt="Sources" />
-<img src="https://img.shields.io/badge/HTTP_Deps-Zero-00C853?style=for-the-badge" alt="Zero Deps" />
+* [Sources](#sources)
+    * [Features](#features)
+    * [What is Mirroring?](#what-is-mirroring)
+* [Lavalink Usage](#lavalink-usage)
+    * [Configuration](#configuration)
+* [Supported URLs and Queries](#supported-urls-and-queries)
+* [Credits](#credits)
 
-<br><br>
+# Sources
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=14&pause=1000&color=667EEA&background=0D1117&vCenter=true&center=true&width=500&lines=>+slugyzeon+v4.0.0+loaded;>+spotify+gql+initialized;>+youtube+fallback+ready;> +deezer+api+ready;> +8+sources+registered;>+zero+rate+limits!" alt="Typing SVG" />
+| Source         | Features                                         | Playback                     |
+|----------------|--------------------------------------------------|------------------------------|
+| Spotify        | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
+| YouTube        | enhances all youtube playback                    | Direct Scraper Fallback      |
+| Gaana          | songs, albums, playlists, artists                | Native Stream (HLS)          |
+| Amazon Music   | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
+| Instagram      | posts, reels, audio pages                        | Native Stream (MP4 CDN)      |
+| Pandora        | tracks, albums, playlists, artists, stations     | [Mirror](#what-is-mirroring) |
+| Deezer         | tracks, albums, playlists, artists               | Native Stream (Decrypted)    |
 
-</div>
+### Features
 
-<br>
+- **Mirror System** — ISRC-first resolution with automatic query fallback for mirrored sources.
+- **Spotify GraphQL API** — 0 credentials, remote hash loading, up to 343 tracks/call, bypasses rate limits.
+- **YouTube Enhancer** — Direct watch page scraping, innertube fallback, bypassing age/consent walls.
+- **Gaana Native Streaming** — Fully persistent HLS chunk buffering directly from Akamai CDN.
+- **Instagram Native Playback** — Auto-scraped tokens with token rotation, supports posts, reels, audio pages.
+- **Deezer Native Streaming** — Direct CDN playback with on-the-fly blowfish decryption.
+- **Rich Metadata** — Returns extended playlists, ISRC codes, album/artist URLs, and preview URLs.
+- **Zero HTTP Dependencies** — Relies entirely on Java's native `HttpClient` for maximal performance.
+- **Seamless Integration** — Plugs directly into standard Lavalink 4.0+ via spring boot.
 
----
+> [!IMPORTANT]
+> ### What is Mirroring?
+>
+> Mirroring is the process of taking the metadata resolved from one source and using it to retrieve a playable `AudioTrack` from another.
+>
+> For example, SlugYZeon cannot directly play from Spotify, or any source marked as `Mirror` playback, so it automatically falls back to searching YouTube for the track's ISRC or Title.
 
-<b>credits & special thanks</b>
+## Lavalink Usage
 
-<br>
+This plugin requires Lavalink `v4` or greater.
 
-**acknowledgments**<br>
-&nbsp;›&nbsp; **[PerformanC / NodeLink](https://github.com/PerformanC/NodeLink)** — for the Amazon Music `BOT_UA` test key.<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*(Note: This plugin does not use any code from NodeLink and is built entirely on the LavaSrc architecture. The user agent was a leftover test component that remained in the production code, and proper credit is provided here.)*<br>
-
-<br>
-
-**credits**<br>
-&nbsp;›&nbsp; **[xylen-py](https://github.com/xylen-py)** — for both plugin apis & sources for deezer & gaana<br>
-&nbsp;›&nbsp; **[saraansx](https://github.com/saraansx)** — for help with Spotify integration<br>
-
-<br>
-
-**special thanks**<br>
-&nbsp;›&nbsp; **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — for providing the official Lavalink plugin template<br>
-&nbsp;›&nbsp; **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — for the foundational mirroring architecture and code structure<br>
-&nbsp;›&nbsp; **[bongo-devs / jiosaavn-plugin](https://github.com/bongo-devs/jiosaavn-plugin)** — for the architecture of external proxy API sources<br>
-&nbsp;›&nbsp; **[notdeltaxd](https://github.com/notdeltaxd)** & **[1Lucas1apk](https://github.com/1Lucas1apk)** — for the pandora source token and api architecture
-
-<br>
-
----
-
-<b>about</b>
-
-<br>
-
-slugyzeon is a production-grade lavalink plugin providing **7 audio sources** for discord music bots . built with java's native `HttpClient`, zero external http dependencies, and spotify's internal graphql api for zero rate limits .
-
-<br>
-
-&nbsp;›&nbsp; **7** audio sources in one plugin<br>
-&nbsp;›&nbsp; **0** external http dependencies<br>
-&nbsp;›&nbsp; **0** credentials needed for spotify<br>
-&nbsp;›&nbsp; **GQL** api bypasses spotify rate limits<br>
-&nbsp;›&nbsp; **TOTP** token generation — works free forever<br>
-&nbsp;›&nbsp; **YouTube Enhancer** — wraps youtube-plugin with direct scraper fallback on failure
-
-<br>
-
----
-
-<b>sources</b>
-
-<br><br>
-
-| source | prefix | url support | isrc mirroring | playback |
-|--------|--------|-------------|----------------|----------|
-| **spotify** | `spsearch:` / `sprec:` | tracks, albums, playlists, artists | yes (spclient) | mirrored |
-| **youtube** | wraps youtube-plugin | enhances all youtube playback | — | direct scraper fallback |
-| **gaana** | `gnsearch:` / `gnrec:` | songs, albums, playlists, artists | — | native stream (hls segments) |
-| **amazon music** | `azsearch:` | tracks, albums, playlists, artists | partial | mirrored |
-| **instagram** | — | posts, reels, audio pages | — | native (mp4 cdn) |
-| **pandora** | `pdsearch:` / `pdrec:` | tracks, albums, playlists, artists, stations | yes | mirrored |
-| **deezer** | `dzsearch:` / `dzrec:` | tracks, albums, playlists, artists | — | native stream (decrypted) |
-
-<br>
-
----
-
-> **Note:** The YouTube enhancer requires the official [Lavalink YouTube Source Plugin](https://github.com/lavalink-devs/youtube-source) to be loaded in order to function.
-
----
-
-<b>installation</b>
-
-<br><br>
+To install this plugin, add the following into your `application.yml`:
 
 ```yaml
 lavalink:
@@ -112,391 +64,208 @@ lavalink:
           snapshot: false
 ```
 
-<br>
+### Configuration
 
----
-
-<b>configuration</b>
-
-<br><br>
+> [!WARNING]
+> The `plugins` object MUST be at the root of your YAML configuration file.
 
 ```yaml
 plugins:
   slugyzeon:
     sources:
-      gaana: false
-      amazonmusic: false
-      instagram: false
-      pandora: false
-      spotify: false
-      youtube: false
-      deezer: false
+      gaana: false # Enable Gaana source
+      amazonmusic: false # Enable Amazon Music source
+      instagram: false # Enable Instagram source
+      pandora: false # Enable Pandora source
+      spotify: false # Enable Spotify source
+      youtube: false # Enable YouTube fallback source
+      deezer: false # Enable Deezer source
     spotify:
-      clientId: ""            # optional — not needed for free usage
-      clientSecret: ""        # optional — not needed for free usage
-      spDc: ""                # optional — sp_dc cookie for account features
-      countryCode: "US"
-      nuanceUrl: ""           # custom nuance json url (uses built-in by default)
-      playlistLoadLimit: 6
-      albumLoadLimit: 6
-      resolveArtistsInSearch: true
-      localFiles: false
+      # clientId & clientSecret are completely optional. By default, TOTP generation is used for zero rate limits.
+      # clientId: "your client id"
+      # clientSecret: "your client secret"
+      # spDc: "your sp dc cookie" # the sp_dc cookie used for accessing account-level features. (Go to open.spotify.com, Application Tab -> Cookies -> sp_dc)
+      countryCode: "US" # the country code for filtering artist top tracks
+      nuanceUrl: "" # custom nuance json url (uses built-in automatically if left blank)
+      playlistLoadLimit: 6 # The number of pages at 100 tracks each
+      albumLoadLimit: 6 # The number of pages at 50 tracks each
+      resolveArtistsInSearch: true # Whether to resolve artists in track search results
+      localFiles: false # Enable local files support
     youtube:
-      mirrorProviders:
+      mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
         - "ytmsearch:%QUERY%"
         - "scsearch:%QUERY%"
     gaana:
-      apiUrl: "https://gaana-plugin-api.vercel.app/api"
+      apiUrl: "https://gaana-plugin-api.vercel.app/api" # The API proxy required to resolve Gaana HLS manifests
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50
       searchLimit: 25
     amazonmusic:
-      countryCode: "IN"
+      countryCode: "IN" # Region lock code for Amazon Music
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50
     pandora:
-      tokenApiUrl: ""
-      csrfToken: ""
-      preferTokenApi: true
+      tokenApiUrl: "" # External API URL to auto-refresh CSRF tokens (REQUIRED if hosting outside the US)
+      # csrfToken: "your csrftoken" # Manual CSRF cookie from pandora.com (Only works if node is hosted inside the US)
+      preferTokenApi: true # Prioritize using the token API over the manual CSRF token
       searchLimit: 6
     deezer:
-      apiUrl: "https://deezer-plugin-api.vercel.app/api"
+      apiUrl: "https://deezer-plugin-api.vercel.app/api" # The API proxy required to bypass Deezer region-blocking
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50
       searchLimit: 25
+      quality: "128" # The format/quality to stream. Available: "128", "320", or "FLAC"
 ```
 
-<details>
-  <summary><b>&nbsp;›&nbsp; spotify config</b></summary>
-  <br>
+---
 
-  ```yaml
-  spotify:
-    clientId: ""            # optional — not needed
-    clientSecret: ""        # optional — not needed
-    spDc: ""                # optional — sp_dc cookie
-    countryCode: "US"
-    nuanceUrl: ""           # custom nuance endpoint
-    playlistLoadLimit: 6
-    albumLoadLimit: 6
-    resolveArtistsInSearch: true
-    localFiles: false
-  ```
+## Supported URLs and Queries
 
-  | field | default | description |
-  |-------|---------|-------------|
-  | `clientId` / `clientSecret` | `""` | optional oauth credentials . not needed — totp works free |
-  | `spDc` | `""` | optional `sp_dc` cookie for account-level features |
-  | `countryCode` | `US` | regional content / artist top tracks |
-  | `nuanceUrl` | `""` | custom nuance json url . uses built-in url by default |
+### Spotify
 
-  **token priority:**
-  1. **TOTP generation** — base32 secret from nuance, synced with spotify server time, RFC 6238
-  2. **client credentials** — if `clientId` + `clientSecret` set, used for REST API calls
+```bash
+# search
+GET /v4/loadtracks?identifier=spsearch:Shape of You
 
-  **ISRC resolution:**
-  1. **spclient metadata** — `spclient.wg.spotify.com/metadata/4/track/{hexId}` → free, no credentials
-  2. **GQL externalIds** — fallback if spclient returns it
-  3. **query fallback** — `ytsearch:Title Artist` if no ISRC available
+# recommendations
+GET /v4/loadtracks?identifier=sprec:seed_tracks=trackId&limit=10
 
-  > everything is optional . spotify works entirely free without any credentials .
-</details>
+# url support
+GET /v4/loadtracks?identifier=https://open.spotify.com/track/7qiZfU4dY1lWllzX7mPBI3
+GET /v4/loadtracks?identifier=https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX
+GET /v4/loadtracks?identifier=https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+GET /v4/loadtracks?identifier=https://open.spotify.com/artist/1Xyo4u8uXC1ZmMpatF05PJ
+```
 
-<details>
-  <summary><b>&nbsp;›&nbsp; youtube fallback config</b></summary>
-  <br>
+### YouTube Fallback
 
-  ```yaml
-  youtube:
-    mirrorProviders:
-      - "ytmsearch:%QUERY%"
-      - "scsearch:%QUERY%"
-  ```
+```bash
+# search (replaces ytsearch when youtube enabled)
+GET /v4/loadtracks?identifier=ytsearch:brown munde
 
-  | field | default | description |
-  |-------|---------|-------------|
-  | `mirrorProviders` | ytmsearch, scsearch | last-resort search on other sources |
+# youtube music search
+GET /v4/loadtracks?identifier=ytmsearch:brown munde
 
-  > requires the standard `youtube-plugin` to be loaded . it acts as a fallback when the original plugin fails .
-</details>
+# url support
+GET /v4/loadtracks?identifier=https://www.youtube.com/watch?v=FM2ykrYbzqg
+GET /v4/loadtracks?identifier=https://www.youtube.com/shorts/ABC123
+GET /v4/loadtracks?identifier=https://youtu.be/FM2ykrYbzqg
+```
 
-<details>
-  <summary><b>&nbsp;›&nbsp; gaana config</b></summary>
-  <br>
+### Gaana
 
-  ```yaml
-  gaana:
-    apiUrl: "https://gaana-plugin-api.vercel.app/api"
-    playlistLoadLimit: 50
-    albumLoadLimit: 50
-    artistLoadLimit: 50
-    searchLimit: 25
-  ```
-</details>
+```bash
+# search
+GET /v4/loadtracks?identifier=gnsearch:Tum Hi Ho
 
-<details>
-  <summary><b>&nbsp;›&nbsp; amazon music config</b></summary>
-  <br>
+# recommendations
+GET /v4/loadtracks?identifier=gnrec:bollywood
 
-  ```yaml
-  amazonmusic:
-    countryCode: "IN"
-    playlistLoadLimit: 50
-    albumLoadLimit: 50
-    artistLoadLimit: 50
-  ```
-</details>
+# url support
+GET /v4/loadtracks?identifier=https://gaana.com/song/tum-hi-ho
+GET /v4/loadtracks?identifier=https://gaana.com/album/aashiqui-2
+GET /v4/loadtracks?identifier=https://gaana.com/playlist/gaana-dj-hindi-top-50-1
+GET /v4/loadtracks?identifier=https://gaana.com/artist/arijit-singh
+```
 
-<details>
-  <summary><b>&nbsp;›&nbsp; pandora config</b></summary>
-  <br>
+### Amazon Music
 
-  ```yaml
-  pandora:
-    tokenApiUrl: ""
-    csrfToken: ""
-    preferTokenApi: true
-    searchLimit: 6
-  ```
-</details>
+```bash
+# search
+GET /v4/loadtracks?identifier=azsearch:Shape of You
 
-<details>
-  <summary><b>&nbsp;›&nbsp; deezer config</b></summary>
-  <br>
+# url support
+GET /v4/loadtracks?identifier=https://music.amazon.com/tracks/B07QGZ1GJ6
+GET /v4/loadtracks?identifier=https://music.amazon.com/albums/B07QGZX5BX
+GET /v4/loadtracks?identifier=https://music.amazon.com/playlists/B07QGZ1GJ6
+GET /v4/loadtracks?identifier=https://music.amazon.com/artists/B001GBY2LE
+```
 
-  ```yaml
-  deezer:
-    apiUrl: "https://deezer-plugin-api.vercel.app/api"
-    playlistLoadLimit: 50
-    albumLoadLimit: 50
-    artistLoadLimit: 50
-    searchLimit: 25
-    quality: "128"      # 128, 320, or FLAC
-  ```
+### Instagram
 
-  | field | default | description |
-  |-------|---------|-------------|
-  | `apiUrl` | `https://deezer-plugin-api.vercel.app/api` | deezer plugin api base url |
-  | `playlistLoadLimit` | `50` | max tracks per playlist load |
-  | `albumLoadLimit` | `50` | max tracks per album load |
-  | `artistLoadLimit` | `50` | max tracks per artist load |
-  | `searchLimit` | `25` | max search results |
-  | `quality` | `128` | stream quality (`128`, `320`, or `FLAC`) |
-</details>
+```bash
+# post
+GET /v4/loadtracks?identifier=https://www.instagram.com/p/ABC123/
 
-<br>
+# reel
+GET /v4/loadtracks?identifier=https://www.instagram.com/reel/ABC123/
+
+# audio page
+GET /v4/loadtracks?identifier=https://www.instagram.com/reels/audio/123456789/
+```
+
+### Pandora
+
+```bash
+# search
+GET /v4/loadtracks?identifier=pdsearch:Bohemian Rhapsody
+
+# recommendations
+GET /v4/loadtracks?identifier=pdrec:TRxxxxxx
+
+# url support
+GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/bohemian-rhapsody/TRxxxxxx
+GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/a-night-at-the-opera/ALxxxxxx
+GET /v4/loadtracks?identifier=https://www.pandora.com/playlist/PLxxxxxx
+GET /v4/loadtracks?identifier=https://www.pandora.com/station/STxxxxxx
+```
+
+### Deezer
+
+```bash
+# search
+GET /v4/loadtracks?identifier=dzsearch:Starboy
+
+# recommendations (charts)
+GET /v4/loadtracks?identifier=dzrec:top
+
+# url support
+GET /v4/loadtracks?identifier=https://www.deezer.com/track/142734142
+GET /v4/loadtracks?identifier=https://www.deezer.com/album/14279764
+GET /v4/loadtracks?identifier=https://www.deezer.com/playlist/53362031
+GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
+```
 
 ---
 
-<b>usage</b>
-
-<br><br>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; spotify</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=spsearch:Shape of You
-
-  # recommendations
-  GET /v4/loadtracks?identifier=sprec:seed_tracks=trackId&limit=10
-
-  # track url
-  GET /v4/loadtracks?identifier=https://open.spotify.com/track/7qiZfU4dY1lWllzX7mPBI3
-
-  # album url
-  GET /v4/loadtracks?identifier=https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX
-
-  # playlist url
-  GET /v4/loadtracks?identifier=https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
-
-  # artist url (top tracks)
-  GET /v4/loadtracks?identifier=https://open.spotify.com/artist/1Xyo4u8uXC1ZmMpatF05PJ
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; youtube fallback</b></summary>
-  <br>
-
-  ```bash
-  # search (replaces ytsearch when youtube enabled)
-  GET /v4/loadtracks?identifier=ytsearch:brown munde
-
-  # youtube music search
-  GET /v4/loadtracks?identifier=ytmsearch:brown munde
-
-  # video url
-  GET /v4/loadtracks?identifier=https://www.youtube.com/watch?v=FM2ykrYbzqg
-
-  # shorts url
-  GET /v4/loadtracks?identifier=https://www.youtube.com/shorts/ABC123
-
-  # youtu.be url
-  GET /v4/loadtracks?identifier=https://youtu.be/FM2ykrYbzqg
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; gaana</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=gnsearch:Tum Hi Ho
-
-  # recommendations
-  GET /v4/loadtracks?identifier=gnrec:bollywood
-
-  # url support
-  GET /v4/loadtracks?identifier=https://gaana.com/song/tum-hi-ho
-  GET /v4/loadtracks?identifier=https://gaana.com/album/aashiqui-2
-  GET /v4/loadtracks?identifier=https://gaana.com/playlist/gaana-dj-hindi-top-50-1
-  GET /v4/loadtracks?identifier=https://gaana.com/artist/arijit-singh
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; amazon music</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=azsearch:Shape of You
-
-  # url support
-  GET /v4/loadtracks?identifier=https://music.amazon.com/tracks/B07QGZ1GJ6
-  GET /v4/loadtracks?identifier=https://music.amazon.com/albums/B07QGZX5BX
-  GET /v4/loadtracks?identifier=https://music.amazon.com/playlists/B07QGZ1GJ6
-  GET /v4/loadtracks?identifier=https://music.amazon.com/artists/B001GBY2LE
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; instagram</b></summary>
-  <br>
-
-  ```bash
-  # post
-  GET /v4/loadtracks?identifier=https://www.instagram.com/p/ABC123/
-
-  # reel
-  GET /v4/loadtracks?identifier=https://www.instagram.com/reel/ABC123/
-
-  # audio page
-  GET /v4/loadtracks?identifier=https://www.instagram.com/reels/audio/123456789/
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; pandora</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=pdsearch:Bohemian Rhapsody
-
-  # recommendations
-  GET /v4/loadtracks?identifier=pdrec:TRxxxxxx
-
-  # url support
-  GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/bohemian-rhapsody/TRxxxxxx
-  GET /v4/loadtracks?identifier=https://www.pandora.com/artist/queen/a-night-at-the-opera/ALxxxxxx
-  GET /v4/loadtracks?identifier=https://www.pandora.com/playlist/PLxxxxxx
-  GET /v4/loadtracks?identifier=https://www.pandora.com/station/STxxxxxx
-  ```
-</details>
-
-<details>
-  <summary><b>&nbsp;›&nbsp; deezer</b></summary>
-  <br>
-
-  ```bash
-  # search
-  GET /v4/loadtracks?identifier=dzsearch:Starboy
-
-  # recommendations (charts)
-  GET /v4/loadtracks?identifier=dzrec:top
-
-  # track url
-  GET /v4/loadtracks?identifier=https://www.deezer.com/track/142734142
-
-  # album url
-  GET /v4/loadtracks?identifier=https://www.deezer.com/album/14279764
-
-  # playlist url
-  GET /v4/loadtracks?identifier=https://www.deezer.com/playlist/53362031
-
-  # artist url (top tracks)
-  GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
-  ```
-</details>
-
-<br>
-
----
-
-<b>features</b>
-
-<br><br>
-
-&nbsp;›&nbsp; **mirror system** — ISRC-first resolution with automatic query fallback for mirrored sources<br>
-&nbsp;›&nbsp; **spotify graphql api** — 0 credentials, remote hash loading, up to 343 tracks/call, bypasses rate limits<br>
-&nbsp;›&nbsp; **youtube enhancer** — direct watch page scraping, innertube fallback, bypassing age/consent walls<br>
-&nbsp;›&nbsp; **gaana native streaming** — fully persistent HLS chunk buffering directly from Akamai CDN<br>
-&nbsp;›&nbsp; **instagram native playback** — auto-scraped tokens with token rotation, supports posts, reels, audio pages<br>
-&nbsp;›&nbsp; **deezer native streaming** — direct CDN playback with on-the-fly blowfish decryption<br>
-&nbsp;›&nbsp; **rich metadata** — returns extended playlists, ISRC codes, album/artist URLs, and preview URLs<br>
-&nbsp;›&nbsp; **zero http dependencies** — relies entirely on Java's native `HttpClient` for maximal performance<br>
-&nbsp;›&nbsp; **seamless integration** — plugs directly into standard Lavalink 4.0+ via spring boot
-
-
-<br>
-
----
-
-<b>build</b>
-
-<br><br>
+## Build
 
 ```bash
 ./gradlew clean build
 ```
 
-> built plugin jar in `plugin/build/libs/`
-
-<br>
+> Built plugin jar is output to `plugin/build/libs/`
 
 ---
 
-<b>disclaimer</b>
+## Credits
 
-<br><br>
-
-this plugin is provided for **educational and research purposes only** . it is a learning project to understand audio streaming, api development, and lavalink plugin architecture . use responsibly and respect each platform's terms of service . the authors are not responsible for any misuse .
-
-<br>
+- **[xylen-py](https://github.com/xylen-py)** — For both plugin APIs & sources for Deezer & Gaana.
+- **[saraansx](https://github.com/saraansx)** — For help with Spotify integration.
+- **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — For providing the official Lavalink plugin template.
+- **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — For the foundational mirroring architecture and code structure.
+- **[bongo-devs / jiosaavn-plugin](https://github.com/bongo-devs/jiosaavn-plugin)** — For the architecture of external proxy API sources.
 
 ---
 
-<b>license</b>
+## Disclaimer
 
-<br><br>
+This plugin is provided for **educational and research purposes only**. It is a learning project to understand audio streaming, API development, and Lavalink plugin architecture. Use responsibly and respect each platform's terms of service. The authors are not responsible for any misuse.
 
-licensed under the **Apache License 2.0** .
+---
 
-&nbsp;›&nbsp; you **can** use, modify, and distribute this software<br>
-&nbsp;›&nbsp; you **can** use it in commercial projects<br>
-&nbsp;›&nbsp; you **must** include the license notice, state changes, and provide original copyright
+## License
 
-see [LICENSE](LICENSE) for full details .
+Licensed under the **Apache License 2.0**.
 
-<br>
+- You **can** use, modify, and distribute this software.
+- You **can** use it in commercial projects.
+- You **must** include the license notice, state changes, and provide original copyright.
+
+See [LICENSE](LICENSE) for full details.
 
 ---
 
