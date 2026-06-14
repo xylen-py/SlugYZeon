@@ -121,24 +121,20 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 if (result instanceof AudioPlaylist) {
                     AudioPlaylist playlist = (AudioPlaylist) result;
                     for (AudioTrack track : playlist.getTracks()) {
-                        if (!track.getIdentifier().equals(this.videoId)) {
-                            if (track instanceof InternalAudioTrack) {
-                                log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'",
-                                        videoId,
-                                        query);
-                                processDelegate((InternalAudioTrack) track, executor);
-                                return true;
-                            }
+                        if (track instanceof InternalAudioTrack) {
+                            log.info("[SlugYZeon] Found exact match track for {} using query '{}'",
+                                    videoId,
+                                    query);
+                            processDelegate((InternalAudioTrack) track, executor);
+                            return true;
                         }
                     }
                 } else if (result instanceof InternalAudioTrack) {
                     AudioTrack track = (AudioTrack) result;
-                    if (!track.getIdentifier().equals(this.videoId)) {
-                        log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'", videoId,
-                                query);
-                        processDelegate((InternalAudioTrack) track, executor);
-                        return true;
-                    }
+                    log.info("[SlugYZeon] Found exact match track for {} using query '{}'", videoId,
+                            query);
+                    processDelegate((InternalAudioTrack) track, executor);
+                    return true;
                 }
             } catch (Exception e) {
                 log.warn("[SlugYZeon] Exact match fallback query '{}' failed for {}", query, videoId, e);
@@ -183,7 +179,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     log.info("[SlugYZeon] Successfully opened fallback stream for {}", videoId);
                     return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Proxy stream attempt {} failed for {}: {}", attempt + 1, videoId, e.getMessage());
             }
         }
         return false;
@@ -249,7 +246,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     processDelegate((InternalAudioTrack) result, executor);
                     return true;
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("Mirror search with provider failed: {}", e.getMessage());
             }
         }
         return false;

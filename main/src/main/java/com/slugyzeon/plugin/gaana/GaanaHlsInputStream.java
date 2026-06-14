@@ -34,7 +34,7 @@ public class GaanaHlsInputStream extends InputStream {
     private byte[] currentBuffer;
     private int bufferPosition;
     private int currentSegmentIndex;
-    private Thread downloadThread;
+    private volatile Thread downloadThread;
 
     public static class Segment {
         public final String url;

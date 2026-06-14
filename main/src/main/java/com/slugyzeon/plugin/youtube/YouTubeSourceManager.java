@@ -73,6 +73,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
             if (isYouTube) {
                 this.originalYouTubeSource = source;
                 sources.set(i, this);
+                manager.registerSourceManager(this);
                 this.attached = true;
                 log.info("Registered Youtube audio Fallback manager...");
                 return true;
