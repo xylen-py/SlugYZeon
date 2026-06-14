@@ -91,13 +91,23 @@ public class DeezerPersistentHttpStream extends PersistentHttpStream {
 
         @Override
         public int read(byte[] b, int off, int len) throws IOException {
+            if (b == null) throw new NullPointerException();
+            if (off < 0 || len < 0 || len > b.length - off) throw new IndexOutOfBoundsException();
+            if (len == 0) return 0;
+
+            if (this.filled && this.buff.hasRemaining()) {
+                int toCopy = Math.min(this.buff.remaining(), len);
+                this.buff.get(b, off, toCopy);
+                return toCopy;
+            }
+
             int totalRead = 0;
-            for (int i = 0; i < len; i++) {
+            while (totalRead < len) {
                 int val = read();
                 if (val == -1) {
                     return totalRead > 0 ? totalRead : -1;
                 }
-                b[off + i] = (byte) val;
+                b[off + totalRead] = (byte) val;
                 totalRead++;
             }
             return totalRead;

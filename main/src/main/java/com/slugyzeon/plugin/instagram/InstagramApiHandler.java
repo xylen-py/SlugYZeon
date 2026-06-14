@@ -99,7 +99,7 @@ public class InstagramApiHandler {
             Thread.currentThread().interrupt();
             return false;
         } catch (Exception e) {
-            log.error("Instagram setup failed: {}", e.getMessage());
+            log.error("Instagram initialization failed: {}", e.getMessage());
             return false;
         } finally {
             initLock.unlock();

@@ -72,7 +72,7 @@ public class DefaultMirroringAudioTrackResolver implements MirroringAudioTrackRe
                 continue;
             }
 
-            if (item instanceof AudioPlaylist && ((AudioPlaylist) item).getTracks().isEmpty()
+            if ((item instanceof AudioPlaylist && ((AudioPlaylist) item).getTracks().isEmpty())
                     || item == AudioReference.NO_TRACK) {
                 continue;
             }

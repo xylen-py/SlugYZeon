@@ -87,8 +87,9 @@ public class GaanaApiHandler {
 
     private JsonNode fetchJson(String path) throws IOException {
         String finalPath = path;
-        if (baseUrl.endsWith("/api") && finalPath.startsWith("/api"))
+        if (baseUrl.endsWith("/api") && finalPath.startsWith("/api")) {
             finalPath = finalPath.substring(4);
+        }
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + finalPath))

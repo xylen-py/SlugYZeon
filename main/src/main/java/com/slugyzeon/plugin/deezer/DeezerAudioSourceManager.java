@@ -3,6 +3,7 @@ package com.slugyzeon.plugin.deezer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.tools.DataFormatTools;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
@@ -403,12 +404,23 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
     }
 
     @Override
-    public void encodeTrack(AudioTrack track, DataOutput output) {
+    public void encodeTrack(AudioTrack track, DataOutput output) throws IOException {
+        DeezerAudioTrack deezerTrack = (DeezerAudioTrack) track;
+        DataFormatTools.writeNullableText(output, deezerTrack.getAlbumName());
+        DataFormatTools.writeNullableText(output, deezerTrack.getAlbumUrl());
+        DataFormatTools.writeNullableText(output, deezerTrack.getArtistUrl());
+        DataFormatTools.writeNullableText(output, deezerTrack.getArtistArtworkUrl());
+        DataFormatTools.writeNullableText(output, deezerTrack.getPreviewUrl());
     }
 
     @Override
-    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) {
-        return new DeezerAudioTrack(trackInfo, this);
+    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
+        String albumName = DataFormatTools.readNullableText(input);
+        String albumUrl = DataFormatTools.readNullableText(input);
+        String artistUrl = DataFormatTools.readNullableText(input);
+        String artistArtworkUrl = DataFormatTools.readNullableText(input);
+        String previewUrl = DataFormatTools.readNullableText(input);
+        return new DeezerAudioTrack(trackInfo, albumName, albumUrl, artistUrl, artistArtworkUrl, previewUrl, this);
     }
 
     @Override

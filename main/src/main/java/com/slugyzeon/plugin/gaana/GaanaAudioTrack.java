@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedInputStream;
-import java.io.IOException;
 
 public class GaanaAudioTrack extends DelegatedAudioTrack {
 
@@ -29,8 +28,6 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
     private final String previewUrl;
 
     private volatile GaanaHlsInputStream hlsStream;
-    private volatile boolean seeking;
-    private volatile long seekTarget;
 
     public GaanaAudioTrack(AudioTrackInfo trackInfo, GaanaAudioSourceManager sourceManager) {
         this(trackInfo, null, null, null, null, null, sourceManager);
@@ -49,59 +46,25 @@ public class GaanaAudioTrack extends DelegatedAudioTrack {
 
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
-        executor.executeProcessingLoop(() -> playback(executor), this::handleSeek);
-    }
-
-    private void handleSeek(long position) {
-        seeking = true;
-        seekTarget = position;
-        closeCurrentStream();
-    }
-
-    private void closeCurrentStream() {
-        if (hlsStream != null) {
-            try {
-                hlsStream.close();
-            } catch (IOException ignored) {}
-        }
-    }
-
-    private void playback(LocalAudioTrackExecutor executor) throws Exception {
         try (HttpInterface httpInterface = sourceManager.getHttpInterface()) {
-            while (true) {
-                long startPosition = seeking ? seekTarget : 0;
-                seeking = false;
+            JsonNode streamNode = sourceManager.getApiHandler().getStream(trackInfo.identifier, "high");
 
-                JsonNode streamNode = sourceManager.getApiHandler().getStream(trackInfo.identifier, "high");
-
-                if (streamNode == null) {
-                    throw new FriendlyException(
-                            "Failed to resolve Gaana stream for: " + trackInfo.title,
-                            FriendlyException.Severity.COMMON, null);
-                }
-
-                try {
-                    hlsStream = new GaanaHlsInputStream(httpInterface, streamNode, startPosition, this);
-                    BufferedInputStream bufferedStream = new BufferedInputStream(hlsStream, 65536);
-
-                    MpegTsElementaryInputStream tsStream = new MpegTsElementaryInputStream(
-                            bufferedStream, MpegTsElementaryInputStream.ADTS_ELEMENTARY_STREAM
-                    );
-                    PesPacketInputStream pesStream = new PesPacketInputStream(tsStream);
-                    AdtsAudioTrack adtsTrack = new AdtsAudioTrack(trackInfo, pesStream);
-
-                    adtsTrack.process(executor);
-                    break;
-
-                } catch (Exception e) {
-                    if (seeking) {
-                        continue;
-                    }
-                    throw e;
-                } finally {
-                    hlsStream = null;
-                }
+            if (streamNode == null) {
+                throw new FriendlyException(
+                        "Failed to resolve Gaana stream for: " + trackInfo.title,
+                        FriendlyException.Severity.COMMON, null);
             }
+
+            hlsStream = new GaanaHlsInputStream(httpInterface, streamNode, 0, this);
+            BufferedInputStream bufferedStream = new BufferedInputStream(hlsStream, 65536);
+
+            MpegTsElementaryInputStream tsStream = new MpegTsElementaryInputStream(
+                    bufferedStream, MpegTsElementaryInputStream.ADTS_ELEMENTARY_STREAM
+            );
+            PesPacketInputStream pesStream = new PesPacketInputStream(tsStream);
+            AdtsAudioTrack adtsTrack = new AdtsAudioTrack(trackInfo, pesStream);
+
+            processDelegate(adtsTrack, executor);
         } catch (Exception e) {
             throw new FriendlyException("Gaana playback failed", FriendlyException.Severity.SUSPICIOUS, e);
         }

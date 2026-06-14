@@ -26,6 +26,6 @@ public class SpotifyAudioTrack extends MirroringAudioTrack {
 
     @Override
     protected AudioTrack makeShallowClone() {
-        return new SpotifyAudioTrack(trackInfo, (SpotifyAudioSourceManager) sourceManager);
+        return new SpotifyAudioTrack(trackInfo, albumName, albumUrl, artistUrl, artistArtworkUrl, previewUrl, isPreview, sourceManager);
     }
 }

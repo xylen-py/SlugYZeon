@@ -5,7 +5,6 @@ import com.sedmelluq.discord.lavaplayer.tools.DataFormatTools;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 
 import java.io.DataInput;
-import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
 
@@ -34,13 +33,15 @@ public abstract class ExtendedAudioSourceManager implements AudioSourceManager {
         String artistArtworkUrl = null;
         String previewUrl = null;
         boolean isPreview = false;
-        if (((DataInputStream) input).available() > Long.BYTES) {
+        try {
             albumName = DataFormatTools.readNullableText(input);
             albumUrl = DataFormatTools.readNullableText(input);
             artistUrl = DataFormatTools.readNullableText(input);
             artistArtworkUrl = DataFormatTools.readNullableText(input);
             previewUrl = DataFormatTools.readNullableText(input);
             isPreview = input.readBoolean();
+        } catch (IOException e) {
+            return new ExtendedAudioTrackInfo(null, null, null, null, null, false);
         }
         return new ExtendedAudioTrackInfo(albumName, albumUrl, artistArtworkUrl, previewUrl, artistUrl, isPreview);
     }

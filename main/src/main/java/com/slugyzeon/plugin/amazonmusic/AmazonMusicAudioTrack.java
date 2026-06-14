@@ -26,6 +26,6 @@ public class AmazonMusicAudioTrack extends MirroringAudioTrack {
 
     @Override
     protected AudioTrack makeShallowClone() {
-        return new AmazonMusicAudioTrack(trackInfo, (AmazonMusicAudioSourceManager) sourceManager);
+        return new AmazonMusicAudioTrack(trackInfo, albumName, albumUrl, artistUrl, artistArtworkUrl, previewUrl, isPreview, sourceManager);
     }
 }

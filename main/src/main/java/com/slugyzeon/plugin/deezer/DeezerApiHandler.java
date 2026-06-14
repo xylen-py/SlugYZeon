@@ -157,6 +157,7 @@ public class DeezerApiHandler {
             Thread.currentThread().interrupt();
             return null;
         } catch (Exception e) {
+            log.debug("API request failed for {}: {}", path, e.getMessage());
             return null;
         }
     }

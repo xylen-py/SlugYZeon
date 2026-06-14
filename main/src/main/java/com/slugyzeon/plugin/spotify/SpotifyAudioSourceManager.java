@@ -121,6 +121,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 hashesLoaded = true;
             }
         } catch (Exception e) {
+            log.debug("Failed to load remote hashes: {}", e.getMessage());
         }
     }
 
@@ -211,7 +212,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
             }
 
             if (location != null && location.startsWith("https://open.spotify.com/")) {
-                return loadItem(null, new AudioReference(location, null));
+                return loadItem(this.getAudioPlayerManager(), new AudioReference(location, null));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

@@ -101,6 +101,7 @@ public class YouTubeProxyHandler {
                 }
             }
         } catch (Exception e) {
+            log.debug("Failed to get counterpart videoId for {}: {}", videoId, e.getMessage());
         }
         return null;
     }
@@ -151,7 +152,8 @@ public class YouTubeProxyHandler {
                 StreamResult result = pickBestAudioFormat(formats);
                 if (result != null)
                     return result;
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("InnerTube client {} failed for {}: {}", client.getClientName(), videoId, e.getMessage());
             }
         }
         return null;
@@ -167,7 +169,8 @@ public class YouTubeProxyHandler {
                         return buildVideoInfo(videoDetails, videoId);
                     }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.debug("InnerTube video info failed for video {} with client {}: {}", videoId, client.getClientName(), e.getMessage());
             }
         }
         return null;

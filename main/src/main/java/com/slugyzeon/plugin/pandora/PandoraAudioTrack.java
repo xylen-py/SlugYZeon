@@ -26,6 +26,6 @@ public class PandoraAudioTrack extends MirroringAudioTrack {
 
     @Override
     protected AudioTrack makeShallowClone() {
-        return new PandoraAudioTrack(this.trackInfo, (PandoraAudioSourceManager) this.sourceManager);
+        return new PandoraAudioTrack(trackInfo, albumName, albumUrl, artistUrl, artistArtworkUrl, previewUrl, isPreview, sourceManager);
     }
 }
