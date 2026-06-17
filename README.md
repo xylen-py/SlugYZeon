@@ -34,8 +34,9 @@
 ### Features
 
 - **Mirror System** — ISRC-first resolution with automatic query fallback for mirrored sources.
-- **Spotify GraphQL API** — 0 credentials, remote hash loading, up to 343 tracks/call, bypasses rate limits.
+- **Spotify GraphQL API** — Zero-downtime hash rotation, asynchronous infinite pagination, bypasses rate limits.
 - **YouTube Enhancer** — Direct watch page scraping, innertube fallback, bypassing age/consent walls.
+- **YouTube Local Cache** — Built-in SSD/HDD caching for all mirrored tracks to bypass ratelimits and save bandwidth.
 - **Gaana Native Streaming** — Fully persistent HLS chunk buffering directly from Akamai CDN.
 - **Instagram Native Playback** — Auto-scraped tokens with token rotation, supports posts, reels, audio pages.
 - **Deezer Native Streaming** — Direct CDN playback with on-the-fly blowfish decryption.
@@ -88,6 +89,8 @@ plugins:
       resolveArtistsInSearch: true # Whether to resolve artists in track search results
       localFiles: false # Enable local files support
     youtube:
+      localDiskCache: true # Automatically save streaming audio to disk to permanently bypass YouTube rate-limits
+      diskCachePath: "youtube-cache" # Directory to save cached audio tracks
       mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
         - "ytmsearch:%QUERY%"
         - "scsearch:%QUERY%"
