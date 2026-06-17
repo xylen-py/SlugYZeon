@@ -339,23 +339,44 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
     @Override
     public boolean isTrackEncodable(AudioTrack track) {
+        if (track instanceof YouTubeTrack) {
+            AudioTrack original = ((YouTubeTrack) track).getOriginalTrack();
+            if (original != null && originalYouTubeSource != null) {
+                return originalYouTubeSource.isTrackEncodable(original);
+            }
+            return true;
+        }
         return originalYouTubeSource != null ? originalYouTubeSource.isTrackEncodable(track) : true;
     }
 
     @Override
     public void encodeTrack(AudioTrack track, DataOutput output) throws IOException {
-        if (originalYouTubeSource != null)
+        if (track instanceof YouTubeTrack) {
+            AudioTrack original = ((YouTubeTrack) track).getOriginalTrack();
+            if (original != null && originalYouTubeSource != null) {
+                output.writeBoolean(true);
+                originalYouTubeSource.encodeTrack(original, output);
+            } else {
+                output.writeBoolean(false);
+            }
+        } else if (originalYouTubeSource != null) {
+            output.writeBoolean(true);
             originalYouTubeSource.encodeTrack(track, output);
+        } else {
+            output.writeBoolean(false);
+        }
     }
 
     @Override
     public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
         AudioTrack original = null;
-        if (originalYouTubeSource != null) {
-            try {
+        try {
+            boolean hasOriginal = input.readBoolean();
+            if (hasOriginal && originalYouTubeSource != null) {
                 original = originalYouTubeSource.decodeTrack(trackInfo, input);
-            } catch (Exception ignored) {
             }
+        } catch (Exception ignored) {
+            // Ignore EOF or legacy cache issues
         }
         return new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
     }

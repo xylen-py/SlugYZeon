@@ -41,6 +41,10 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         this.sourceManager = sourceManager;
     }
 
+    public AudioTrack getOriginalTrack() {
+        return originalTrack;
+    }
+
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
         if (sourceManager.isLocalDiskCache()) {
