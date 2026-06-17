@@ -51,6 +51,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     private volatile String playlistHash = PLAYLIST_HASH;
     private volatile String artistHash = ARTIST_HASH;
     private volatile boolean hashesLoaded = false;
+    private final java.util.Map<String, String> isrcCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     public static final Pattern URL_PATTERN = Pattern.compile(
             "(https?://)(www\\.)?open\\.spotify\\.com/(?:(?<region>[a-zA-Z-]+)/)?(?:user/(?<user>[a-zA-Z0-9-_]+)/)?(?<type>track|album|playlist|artist)/(?<identifier>[a-zA-Z0-9-_]+)");
@@ -319,6 +320,20 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         if (trackIds == null || trackIds.isEmpty())
             return isrcMap;
 
+        List<String> missingIds = new ArrayList<>();
+        for (String id : trackIds) {
+            String cached = isrcCache.get(id);
+            if (cached != null) {
+                isrcMap.put(id, cached);
+            } else {
+                missingIds.add(id);
+            }
+        }
+
+        if (missingIds.isEmpty()) {
+            return isrcMap;
+        }
+
         String token;
         try {
             token = getToken();
@@ -329,8 +344,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         int concurrency = 25;
         final String authToken = token;
 
-        for (int i = 0; i < trackIds.size(); i += concurrency) {
-            List<String> batch = trackIds.subList(i, Math.min(i + concurrency, trackIds.size()));
+        for (int i = 0; i < missingIds.size(); i += concurrency) {
+            List<String> batch = missingIds.subList(i, Math.min(i + concurrency, missingIds.size()));
 
             java.util.concurrent.CompletableFuture<?>[] futures = batch.stream()
                     .map(trackId -> {
@@ -362,6 +377,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                                                     String isrc = ext.path("id").asText(null);
                                                     if (isrc != null && !isrc.isEmpty()) {
                                                         isrcMap.put(trackId, isrc);
+                                                        isrcCache.put(trackId, isrc);
                                                     }
                                                     break;
                                                 }
