@@ -126,14 +126,7 @@ public class DeezerAudioSourceManager implements AudioSourceManager {
         if (tracks.isEmpty())
             return AudioReference.NO_TRACK;
 
-        return new DeezerAudioPlaylist(
-                "Deezer Search: " + query,
-                tracks,
-                ExtendedAudioPlaylist.Type.PLAYLIST,
-                null,
-                null,
-                null,
-                tracks.size());
+        return new BasicAudioPlaylist("Deezer Search: " + query, tracks, null, true);
     }
 
     public AudioItem getRecommendations(String query) throws IOException {

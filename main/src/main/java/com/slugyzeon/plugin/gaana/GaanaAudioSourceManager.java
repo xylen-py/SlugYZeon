@@ -108,14 +108,7 @@ public class GaanaAudioSourceManager implements AudioSourceManager, HttpConfigur
         if (tracks.isEmpty())
             return AudioReference.NO_TRACK;
 
-        return new GaanaAudioPlaylist(
-                "Gaana Search: " + query,
-                tracks,
-                ExtendedAudioPlaylist.Type.PLAYLIST,
-                null,
-                null,
-                null,
-                tracks.size());
+        return new BasicAudioPlaylist("Gaana Search: " + query, tracks, null, true);
     }
 
     public AudioItem getRecommendations(String query) throws IOException {

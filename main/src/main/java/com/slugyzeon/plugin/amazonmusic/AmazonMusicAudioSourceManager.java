@@ -134,14 +134,7 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
             }
         }
 
-        return new AmazonMusicAudioPlaylist(
-                "Amazon Music Search: " + query,
-                tracks,
-                ExtendedAudioPlaylist.Type.PLAYLIST,
-                null,
-                null,
-                null,
-                tracks.size());
+        return new BasicAudioPlaylist("Amazon Music Search: " + query, tracks, null, true);
     }
 
     public AudioItem resolveTrack(String url, String id) throws IOException {

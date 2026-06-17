@@ -135,14 +135,7 @@ public class PandoraAudioSourceManager extends MirroringAudioSourceManager {
         if (tracks.isEmpty())
             return AudioReference.NO_TRACK;
 
-        return new PandoraAudioPlaylist(
-                "Pandora Search: " + query,
-                tracks,
-                ExtendedAudioPlaylist.Type.PLAYLIST,
-                null,
-                null,
-                null,
-                tracks.size());
+        return new BasicAudioPlaylist("Pandora Search: " + query, tracks, null, true);
     }
 
     public AudioItem getTrack(String trackId) throws IOException {
