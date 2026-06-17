@@ -10,6 +10,24 @@ import java.util.List;
 public class SlugYZeonYouTubeConfig {
 
     private List<String> mirrorProviders;
+    private boolean localDiskCache = false;
+    private String diskCachePath = "youtube-cache";
+
+    public boolean isLocalDiskCache() {
+        return localDiskCache;
+    }
+
+    public void setLocalDiskCache(boolean localDiskCache) {
+        this.localDiskCache = localDiskCache;
+    }
+
+    public String getDiskCachePath() {
+        return diskCachePath;
+    }
+
+    public void setDiskCachePath(String diskCachePath) {
+        this.diskCachePath = diskCachePath;
+    }
 
     public List<String> getMirrorProviders() {
         return mirrorProviders;

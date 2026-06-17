@@ -104,6 +104,8 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                             };
             this.youtube = new YouTubeSourceManager(
                     providers,
+                    youtubeConfig.isLocalDiskCache(),
+                    youtubeConfig.getDiskCachePath(),
                     unused -> manager);
         }
     }

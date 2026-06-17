@@ -22,15 +22,36 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private final YouTubeProxyHandler proxyHandler;
     private final Function<Void, AudioPlayerManager> audioPlayerManager;
     private final String[] mirrorProviders;
+    private final boolean localDiskCache;
+    private final String diskCachePath;
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
 
     public YouTubeSourceManager(
             String[] mirrorProviders,
+            boolean localDiskCache,
+            String diskCachePath,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
         this.proxyHandler = new YouTubeProxyHandler();
         this.audioPlayerManager = audioPlayerManager;
         this.mirrorProviders = mirrorProviders != null ? mirrorProviders : new String[] { "scsearch:%QUERY%" };
+        this.localDiskCache = localDiskCache;
+        this.diskCachePath = diskCachePath != null ? diskCachePath : "youtube-cache";
+
+        if (this.localDiskCache) {
+            java.io.File cacheDir = new java.io.File(this.diskCachePath);
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs();
+            }
+        }
+    }
+
+    public boolean isLocalDiskCache() {
+        return localDiskCache;
+    }
+
+    public String getDiskCachePath() {
+        return diskCachePath;
     }
 
     public YouTubeProxyHandler getProxyHandler() {

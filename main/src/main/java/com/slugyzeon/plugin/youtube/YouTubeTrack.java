@@ -43,6 +43,30 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
+        if (sourceManager.isLocalDiskCache()) {
+            java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
+            if (webmFile.exists() && webmFile.length() > 0) {
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(webmFile)) {
+                    log.info("[SlugYZeon] Playing cached webm for {}", videoId);
+                    processDelegate(new MatroskaAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
+                    return;
+                } catch (Exception e) {
+                    log.warn("[SlugYZeon] Failed to play cached webm for {}", videoId, e);
+                }
+            }
+            java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
+            if (m4aFile.exists() && m4aFile.length() > 0) {
+                try (java.io.FileInputStream fis = new java.io.FileInputStream(m4aFile)) {
+                    log.info("[SlugYZeon] Playing cached m4a for {}", videoId);
+                    processDelegate(new MpegAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
+                    return;
+                } catch (Exception e) {
+                    log.warn("[SlugYZeon] Failed to play cached m4a for {}", videoId, e);
+                }
+            }
+            triggerBackgroundCache();
+        }
+
         if (originalTrack instanceof InternalAudioTrack) {
             try {
                 processDelegate((InternalAudioTrack) originalTrack, executor);
@@ -263,5 +287,43 @@ public class YouTubeTrack extends DelegatedAudioTrack {
     @Override
     protected AudioTrack makeShallowClone() {
         return new YouTubeTrack(trackInfo, videoId, originalTrack, sourceManager);
+    }
+
+    private void triggerBackgroundCache() {
+        java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
+        java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
+        if (webmFile.exists() || m4aFile.exists()) return;
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
+                if (stream == null) return;
+
+                boolean isWebm = stream.mimeType != null && (stream.mimeType.contains("webm") || stream.mimeType.contains("opus"));
+                String ext = isWebm ? ".webm" : ".m4a";
+                java.io.File targetFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ext);
+                java.io.File partFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ext + ".part");
+
+                if (targetFile.exists()) return;
+
+                HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(10)).build();
+                HttpRequest request = HttpRequest.newBuilder().uri(new URI(stream.url)).header("User-Agent", UA).GET().build();
+                HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+
+                if (response.statusCode() == 200) {
+                    try (InputStream in = response.body(); java.io.FileOutputStream out = new java.io.FileOutputStream(partFile)) {
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
+                    }
+                    partFile.renameTo(targetFile);
+                    log.info("[SlugYZeon] Successfully cached {} to disk", videoId);
+                }
+            } catch (Exception e) {
+                log.warn("[SlugYZeon] Failed to background cache {}", videoId);
+            }
+        });
     }
 }
