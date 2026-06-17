@@ -84,7 +84,14 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         this.resolveArtistsInSearch = resolveArtistsInSearch;
         this.localFiles = localFiles;
         loadRemoteHashes();
+        hashScheduler.scheduleAtFixedRate(this::loadRemoteHashes, 12, 12, java.util.concurrent.TimeUnit.HOURS);
     }
+
+    private final java.util.concurrent.ScheduledExecutorService hashScheduler = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "SpotifyHashUpdater");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private void loadRemoteHashes() {
         try {
@@ -653,41 +660,77 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String owner = playlist.path("ownerV2").path("data").path("name").asText("Unknown");
         int totalTracks = playlist.path("content").path("totalCount").asInt(0);
 
+        List<JsonNode> allItems = new ArrayList<>();
         JsonNode contentItems = playlist.path("content").path("items");
+        if (contentItems.isArray()) {
+            contentItems.forEach(allItems::add);
+        }
+
+        if (totalTracks > 343 && playlistPageLimit > 1) {
+            int pagesToFetch = Math.min((totalTracks + 342) / 343, playlistPageLimit);
+            java.util.concurrent.CompletableFuture<?>[] pageFutures = new java.util.concurrent.CompletableFuture<?>[pagesToFetch - 1];
+            java.util.List<java.util.List<JsonNode>> concurrentPages = new ArrayList<>(java.util.Collections.nCopies(pagesToFetch - 1, null));
+
+            for (int i = 1; i < pagesToFetch; i++) {
+                final int pageIndex = i;
+                final int offset = i * 343;
+                pageFutures[i - 1] = java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        ObjectNode pageVars = mapper.createObjectNode();
+                        pageVars.put("uri", "spotify:playlist:" + id);
+                        pageVars.put("offset", offset);
+                        pageVars.put("limit", 343);
+                        pageVars.put("enableWatchFeedEntrypoint", false);
+                        JsonNode pageData = gqlQuery("fetchPlaylist", playlistHash, pageVars);
+                        if (pageData != null) {
+                            JsonNode pageItems = pageData.path("playlistV2").path("content").path("items");
+                            if (pageItems.isArray()) {
+                                java.util.List<JsonNode> itemsList = new ArrayList<>();
+                                pageItems.forEach(itemsList::add);
+                                concurrentPages.set(pageIndex - 1, itemsList);
+                            }
+                        }
+                    } catch (Exception e) {}
+                });
+            }
+            try {
+                java.util.concurrent.CompletableFuture.allOf(pageFutures).join();
+            } catch (Exception e) {}
+
+            for (java.util.List<JsonNode> pageList : concurrentPages) {
+                if (pageList != null) allItems.addAll(pageList);
+            }
+        }
 
         List<String> collectedIds = new ArrayList<>();
         List<AudioTrack> tracks = new ArrayList<>();
-        if (contentItems.isArray()) {
-            for (JsonNode item : contentItems) {
-                JsonNode trackData = item.path("itemV2").path("data");
-                if (trackData.isMissingNode() || trackData.isNull())
-                    continue;
-                if (!"Track".equals(trackData.path("__typename").asText("")))
-                    continue;
-                String tid = extractIdFromUri(trackData.path("uri").asText(""));
-                if (!tid.isEmpty())
-                    collectedIds.add(tid);
-            }
+        for (JsonNode item : allItems) {
+            JsonNode trackData = item.path("itemV2").path("data");
+            if (trackData.isMissingNode() || trackData.isNull())
+                continue;
+            if (!"Track".equals(trackData.path("__typename").asText("")))
+                continue;
+            String tid = extractIdFromUri(trackData.path("uri").asText(""));
+            if (!tid.isEmpty())
+                collectedIds.add(tid);
         }
 
         java.util.Map<String, String> isrcMap = fetchIsrcMap(collectedIds);
 
-        if (contentItems.isArray()) {
-            for (JsonNode item : contentItems) {
-                JsonNode trackData = item.path("itemV2").path("data");
-                if (trackData.isMissingNode() || trackData.isNull())
-                    continue;
-                if (!"Track".equals(trackData.path("__typename").asText("")))
-                    continue;
+        for (JsonNode item : allItems) {
+            JsonNode trackData = item.path("itemV2").path("data");
+            if (trackData.isMissingNode() || trackData.isNull())
+                continue;
+            if (!"Track".equals(trackData.path("__typename").asText("")))
+                continue;
 
-                String trackId = extractIdFromUri(trackData.path("uri").asText(""));
-                if (trackId.isEmpty())
-                    continue;
+            String trackId = extractIdFromUri(trackData.path("uri").asText(""));
+            if (trackId.isEmpty())
+                continue;
 
-                AudioTrack track = parseGqlTrackWithIsrc(trackData, trackId, preview, isrcMap.get(trackId));
-                if (track != null)
-                    tracks.add(track);
-            }
+            AudioTrack track = parseGqlTrackWithIsrc(trackData, trackId, preview, isrcMap.get(trackId));
+            if (track != null)
+                tracks.add(track);
         }
 
         if (tracks.isEmpty())
