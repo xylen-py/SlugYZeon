@@ -448,7 +448,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     }
 
     @Override
-    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
+    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, java.io.DataInput input) throws java.io.IOException {
         AudioTrack original = null;
         try {
             boolean hasOriginal = input.readBoolean();
@@ -457,7 +457,13 @@ public class YouTubeSourceManager implements AudioSourceManager {
             }
         } catch (Exception ignored) {
         }
-        return new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
+        
+        YouTubeTrack decoded = new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
+        AudioItem fixed = fixTrackIfNeeded(decoded, new AudioReference(trackInfo.identifier, null));
+        if (fixed instanceof AudioTrack) {
+            return (AudioTrack) fixed;
+        }
+        return decoded;
     }
 
     @Override
