@@ -177,7 +177,18 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
         if (result != null) {
             if (result instanceof AudioTrack) {
-                return wrapTrack((AudioTrack) result);
+                AudioTrack track = (AudioTrack) result;
+                String title = track.getInfo().title;
+                String author = track.getInfo().author;
+                if (title == null || title.equalsIgnoreCase("Unknown") || title.equalsIgnoreCase("Unknown title") ||
+                    author == null || author.equalsIgnoreCase("Unknown") || author.equalsIgnoreCase("Unknown artist")) {
+                    AudioItem fallback = fallbackLoadItem(reference);
+                    if (fallback != null) {
+                        if (fallback instanceof AudioTrack) return wrapTrack((AudioTrack) fallback);
+                        return fallback;
+                    }
+                }
+                return wrapTrack(track);
             }
             if (result instanceof AudioPlaylist) {
                 return wrapPlaylist((AudioPlaylist) result);
