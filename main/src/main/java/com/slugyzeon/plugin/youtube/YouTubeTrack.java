@@ -293,6 +293,77 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         return new YouTubeTrack(trackInfo, videoId, originalTrack, sourceManager);
     }
 
+    private String extractUrlFromOriginalPlugin() {
+        try {
+            AudioSourceManager sm = sourceManager.getOriginalYouTubeSource();
+            if (sm == null) return null;
+            
+            java.lang.reflect.Method getHttpInterface = null;
+            try { getHttpInterface = sm.getClass().getMethod("getHttpInterface"); } catch (Exception ignored) {}
+            
+            Object httpInterface = null;
+            if (getHttpInterface != null) {
+                httpInterface = getHttpInterface.invoke(sm);
+            }
+            
+            java.lang.reflect.Method getTrackDetailsLoader = null;
+            try { getTrackDetailsLoader = sm.getClass().getMethod("getTrackDetailsLoader"); } catch (Exception ignored) {}
+            
+            if (getTrackDetailsLoader == null) return null;
+            
+            Object loader = getTrackDetailsLoader.invoke(sm);
+            
+            java.lang.reflect.Method loadDetails = null;
+            for (java.lang.reflect.Method m : loader.getClass().getMethods()) {
+                if (m.getName().equals("loadDetails")) {
+                    loadDetails = m;
+                    break;
+                }
+            }
+            if (loadDetails == null) return null;
+            
+            Object trackDetails;
+            if (loadDetails.getParameterCount() == 2 && httpInterface != null) {
+                trackDetails = loadDetails.invoke(loader, httpInterface, videoId);
+            } else if (loadDetails.getParameterCount() == 1) {
+                trackDetails = loadDetails.invoke(loader, videoId);
+            } else {
+                return null;
+            }
+            
+            java.lang.reflect.Method getFormats = trackDetails.getClass().getMethod("getFormats");
+            java.util.List<?> formats = (java.util.List<?>) getFormats.invoke(trackDetails);
+            
+            String bestUrl = null;
+            long bestBitrate = -1;
+            
+            for (Object format : formats) {
+                java.lang.reflect.Method getInfo = format.getClass().getMethod("getInfo");
+                Object info = getInfo.invoke(format);
+                
+                java.lang.reflect.Method getMimeType = info.getClass().getMethod("getMimeType");
+                String mimeType = (String) getMimeType.invoke(info);
+                
+                if (mimeType != null && mimeType.startsWith("audio/")) {
+                    java.lang.reflect.Method getBitrate = info.getClass().getMethod("getBitrate");
+                    long bitrate = ((Number) getBitrate.invoke(info)).longValue();
+                    
+                    java.lang.reflect.Method getUrl = format.getClass().getMethod("getUrl");
+                    String url = (String) getUrl.invoke(format);
+                    
+                    if (url != null && bitrate > bestBitrate) {
+                        bestBitrate = bitrate;
+                        bestUrl = url;
+                    }
+                }
+            }
+            return bestUrl;
+        } catch (Exception e) {
+            log.debug("[SlugYZeon] Reflection extraction failed for {}: {}", videoId, e.getMessage());
+            return null;
+        }
+    }
+
     private void triggerBackgroundCache() {
         java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
         java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
@@ -300,10 +371,22 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
         CompletableFuture.runAsync(() -> {
             try {
-                YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
-                if (stream == null) return;
+                String streamUrl = extractUrlFromOriginalPlugin();
+                String finalUa = UA;
+                boolean isWebm = true;
 
-                boolean isWebm = stream.mimeType != null && (stream.mimeType.contains("webm") || stream.mimeType.contains("opus"));
+                if (streamUrl == null) {
+                    log.info("[SlugYZeon] Extracting via proxy handler for {}", videoId);
+                    YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
+                    if (stream == null) {
+                        log.warn("[SlugYZeon] Proxy stream returned null, cannot background cache {}", videoId);
+                        return;
+                    }
+                    streamUrl = stream.url;
+                    if (stream.userAgent != null) finalUa = stream.userAgent;
+                    isWebm = stream.mimeType != null && (stream.mimeType.contains("webm") || stream.mimeType.contains("opus"));
+                }
+
                 String ext = isWebm ? ".webm" : ".m4a";
                 java.io.File targetFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ext);
                 java.io.File partFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ext + ".part");
@@ -311,10 +394,13 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 if (targetFile.exists()) return;
 
                 HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).connectTimeout(Duration.ofSeconds(10)).build();
-                HttpRequest request = HttpRequest.newBuilder().uri(new URI(stream.url)).header("User-Agent", UA).GET().build();
+                HttpRequest request = HttpRequest.newBuilder().uri(new URI(streamUrl))
+                        .header("User-Agent", finalUa)
+                        .header("Range", "bytes=0-")
+                        .GET().build();
                 HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
-                if (response.statusCode() == 200) {
+                if (response.statusCode() == 200 || response.statusCode() == 206) {
                     try (InputStream in = response.body(); java.io.FileOutputStream out = new java.io.FileOutputStream(partFile)) {
                         byte[] buffer = new byte[8192];
                         int read;
@@ -324,9 +410,11 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     }
                     partFile.renameTo(targetFile);
                     log.info("[SlugYZeon] Successfully cached {} to disk", videoId);
+                } else {
+                    log.warn("[SlugYZeon] Cache download failed for {}: HTTP {}", videoId, response.statusCode());
                 }
             } catch (Exception e) {
-                log.warn("[SlugYZeon] Failed to background cache {}", videoId);
+                log.warn("[SlugYZeon] Failed to background cache {}", videoId, e);
             }
         });
     }

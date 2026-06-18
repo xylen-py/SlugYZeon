@@ -149,8 +149,9 @@ public class YouTubeProxyHandler {
                     continue;
 
                 StreamResult result = pickBestAudioFormat(formats);
-                if (result != null)
-                    return result;
+                if (result != null) {
+                    return new StreamResult(result.url, result.mimeType, result.source, result.bitrate, client.getUserAgent());
+                }
             } catch (Exception ignored) {
             }
         }
@@ -239,7 +240,7 @@ public class YouTubeProxyHandler {
             }
         }
 
-        return bestUrl != null ? new StreamResult(bestUrl, bestMime, "youtube-direct", bestBitrate) : null;
+        return bestUrl != null ? new StreamResult(bestUrl, bestMime, "youtube-direct", bestBitrate, null) : null;
     }
 
     private List<VideoInfo> tryInnertubeSearch(String query, boolean musicOnly) {
@@ -469,12 +470,14 @@ public class YouTubeProxyHandler {
         public final String mimeType;
         public final String source;
         public final int bitrate;
+        public final String userAgent;
 
-        public StreamResult(String url, String mimeType, String source, int bitrate) {
+        public StreamResult(String url, String mimeType, String source, int bitrate, String userAgent) {
             this.url = url;
             this.mimeType = mimeType;
             this.source = source;
             this.bitrate = bitrate;
+            this.userAgent = userAgent;
         }
     }
 
