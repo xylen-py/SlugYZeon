@@ -381,7 +381,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         if (webmFile.exists() || m4aFile.exists()) {
             return;
         }
-
         CompletableFuture.runAsync(() -> {
             try {
                 String streamUrl = extractUrlFromOriginalPlugin();
@@ -442,6 +441,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             } catch (Exception e) {
                 log.warn("Failed to cache {} to disk", videoId);
             }
-        });
+        }, sourceManager.getCacheExecutor());
     }
 }

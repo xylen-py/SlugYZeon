@@ -27,6 +27,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
     private final java.util.concurrent.ScheduledExecutorService cleanupExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+    private final java.util.concurrent.ExecutorService cacheExecutor = java.util.concurrent.Executors.newFixedThreadPool(3);
 
     public YouTubeSourceManager(
             String[] mirrorProviders,
@@ -159,6 +160,10 @@ public class YouTubeSourceManager implements AudioSourceManager {
     @Override
     public String getSourceName() {
         return "youtube";
+    }
+
+    public java.util.concurrent.ExecutorService getCacheExecutor() {
+        return cacheExecutor;
     }
 
     @Override
@@ -504,5 +509,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     public void shutdown() {
         if (originalYouTubeSource != null)
             originalYouTubeSource.shutdown();
+        cleanupExecutor.shutdownNow();
+        cacheExecutor.shutdownNow();
     }
 }
