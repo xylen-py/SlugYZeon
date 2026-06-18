@@ -177,24 +177,23 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
         if (result != null) {
             if (result instanceof AudioTrack) {
-                AudioTrack track = (AudioTrack) result;
-                String title = track.getInfo().title;
-                String author = track.getInfo().author;
-                if (title == null || title.equalsIgnoreCase("Unknown") || title.equalsIgnoreCase("Unknown title") ||
-                    author == null || author.equalsIgnoreCase("Unknown") || author.equalsIgnoreCase("Unknown artist")) {
-                    AudioItem fallback = fetchOembedFallback(reference, track);
-                    if (fallback != null) return fallback;
-                    
-                    fallback = fallbackLoadItem(reference);
-                    if (fallback != null) {
-                        if (fallback instanceof AudioTrack) return wrapTrack((AudioTrack) fallback);
-                        return fallback;
-                    }
-                }
-                return wrapTrack(track);
+                return fixTrackIfNeeded((AudioTrack) result, reference);
             }
             if (result instanceof AudioPlaylist) {
-                return wrapPlaylist((AudioPlaylist) result);
+                AudioPlaylist original = (AudioPlaylist) result;
+                java.util.List<AudioTrack> fixedTracks = new java.util.ArrayList<>();
+                for (AudioTrack track : original.getTracks()) {
+                    AudioItem fixed = fixTrackIfNeeded(track, new AudioReference(track.getInfo().identifier, null));
+                    if (fixed instanceof AudioTrack) {
+                        fixedTracks.add((AudioTrack) fixed);
+                    } else {
+                        fixedTracks.add(wrapTrack(track));
+                    }
+                }
+                AudioTrack selectedTrack = original.getSelectedTrack() != null
+                        ? (AudioTrack) fixTrackIfNeeded(original.getSelectedTrack(), new AudioReference(original.getSelectedTrack().getInfo().identifier, null))
+                        : null;
+                return new BasicAudioPlaylist(original.getName(), fixedTracks, selectedTrack, original.isSearchResult());
             }
             return result;
         }
@@ -206,6 +205,24 @@ public class YouTubeSourceManager implements AudioSourceManager {
         }
 
         return null;
+    }
+
+    private AudioItem fixTrackIfNeeded(AudioTrack track, AudioReference reference) {
+        String title = track.getInfo().title;
+        String author = track.getInfo().author;
+        if (title == null || title.trim().isEmpty() || title.toLowerCase().contains("unknown") ||
+            author == null || author.trim().isEmpty() || author.toLowerCase().contains("unknown")) {
+            
+            AudioItem fallback = fetchOembedFallback(reference, track);
+            if (fallback != null) return fallback;
+            
+            fallback = fallbackLoadItem(reference);
+            if (fallback != null) {
+                if (fallback instanceof AudioTrack) return wrapTrack((AudioTrack) fallback);
+                return fallback;
+            }
+        }
+        return wrapTrack(track);
     }
 
     static boolean isRetriableError(Throwable e) {
