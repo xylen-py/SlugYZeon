@@ -51,21 +51,17 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
             if (webmFile.exists() && webmFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(webmFile)) {
-                    log.info("[SlugYZeon] Playing cached webm for {}", videoId);
                     processDelegate(new MatroskaAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
                 } catch (Exception e) {
-                    log.warn("[SlugYZeon] Failed to play cached webm for {}", videoId, e);
                 }
             }
             java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
             if (m4aFile.exists() && m4aFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(m4aFile)) {
-                    log.info("[SlugYZeon] Playing cached m4a for {}", videoId);
                     processDelegate(new MpegAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
                 } catch (Exception e) {
-                    log.warn("[SlugYZeon] Failed to play cached m4a for {}", videoId, e);
                 }
             }
             triggerBackgroundCache();
@@ -151,9 +147,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     for (AudioTrack track : playlist.getTracks()) {
                         if (!track.getIdentifier().equals(this.videoId)) {
                             if (track instanceof InternalAudioTrack) {
-                                log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'",
-                                        videoId,
-                                        query);
                                 processDelegate((InternalAudioTrack) track, executor);
                                 return true;
                             }
@@ -162,14 +155,11 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 } else if (result instanceof InternalAudioTrack) {
                     AudioTrack track = (AudioTrack) result;
                     if (!track.getIdentifier().equals(this.videoId)) {
-                        log.info("[SlugYZeon] Found alternative exact match track for {} using query '{}'", videoId,
-                                query);
                         processDelegate((InternalAudioTrack) track, executor);
                         return true;
                     }
                 }
             } catch (Exception e) {
-                log.warn("[SlugYZeon] Exact match fallback query '{}' failed for {}", query, videoId, e);
             }
         }
         return false;
@@ -208,7 +198,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     } else {
                         processDelegate(new MpegAudioTrack(trackInfo, nis), executor);
                     }
-                    log.info("[SlugYZeon] Successfully opened fallback stream for {}", videoId);
                     return true;
                 }
             } catch (Exception ignored) {
@@ -318,7 +307,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             }
             
             if (httpInterface == null) {
-                log.warn("[SlugYZeon] Could not get HttpInterface from original plugin");
                 return null;
             }
             
@@ -326,7 +314,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             try { getTrackDetailsLoader = sm.getClass().getMethod("getTrackDetailsLoader"); } catch (Exception ignored) {}
             
             if (getTrackDetailsLoader == null) {
-                log.warn("[SlugYZeon] Could not find getTrackDetailsLoader on {}", sm.getClass().getName());
                 return null;
             }
             
@@ -340,7 +327,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 }
             }
             if (loadDetails == null) {
-                log.warn("[SlugYZeon] Could not find loadDetails on {}", loader.getClass().getName());
                 return null;
             }
             
@@ -381,7 +367,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             }
             return bestUrl;
         } catch (Exception e) {
-            log.warn("[SlugYZeon] Reflection extraction failed for {}: {}", videoId, e.getMessage(), e);
             return null;
         }
     }
@@ -398,10 +383,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 boolean isWebm = true;
 
                 if (streamUrl == null) {
-                    log.info("[SlugYZeon] Extracting via proxy handler for {}", videoId);
                     YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
                     if (stream == null) {
-                        log.warn("[SlugYZeon] Proxy stream returned null, cannot background cache {}", videoId);
                         return;
                     }
                     streamUrl = stream.url;
@@ -431,12 +414,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                         }
                     }
                     partFile.renameTo(targetFile);
-                    log.info("[SlugYZeon] Successfully cached {} to disk", videoId);
-                } else {
-                    log.warn("[SlugYZeon] Cache download failed for {}: HTTP {}", videoId, response.statusCode());
                 }
             } catch (Exception e) {
-                log.warn("[SlugYZeon] Failed to background cache {}", videoId, e);
             }
         });
     }

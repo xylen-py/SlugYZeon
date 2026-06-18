@@ -1,29 +1,29 @@
 package com.slugyzeon.plugin.youtube.clients;
 
-public class TvEmbeddedClient extends InnerTubeClient {
+public class TvCastClient extends InnerTubeClient {
     @Override
     public String getClientName() {
-        return "TVHTML5_SIMPLY_EMBEDDED_PLAYER";
+        return "TVHTML5_CAST";
     }
 
     @Override
     public String getClientVersion() {
-        return "2.0";
+        return "1.1";
     }
 
     @Override
     public String getUserAgent() {
-        return "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 (KHTML, like Gecko) 85.0.4183.93/6.5 TV Safari/537.36";
+        return "Mozilla/5.0 (CrKey armv7l 1.5.44178) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.2 Safari/537.36";
     }
 
     @Override
     public String getClientId() {
-        return "85";
+        return "37";
     }
 
     @Override
     public boolean requiresCipher() {
-        return true;
+        return false;
     }
 
     @Override

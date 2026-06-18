@@ -31,8 +31,9 @@ public class YouTubeSourceManager implements AudioSourceManager {
             String[] mirrorProviders,
             boolean localDiskCache,
             String diskCachePath,
+            String cipherUrl,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
-        this.proxyHandler = new YouTubeProxyHandler();
+        this.proxyHandler = new YouTubeProxyHandler(cipherUrl);
         this.audioPlayerManager = audioPlayerManager;
         this.mirrorProviders = mirrorProviders != null ? mirrorProviders : new String[] { "scsearch:%QUERY%" };
         this.localDiskCache = localDiskCache;
@@ -160,8 +161,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
         }
 
         if (loadError != null && isRetriableError(loadError)) {
-            log.info("[SlugYZeon] Original YouTube client failed & attempting scraper fallback for {}",
-                    reference.identifier);
             AudioItem fallback = fallbackLoadItem(reference);
             if (fallback != null)
                 return fallback;
@@ -217,7 +216,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
             String query = id.substring(id.indexOf(':') + 1);
             List<YouTubeProxyHandler.VideoInfo> results = proxyHandler.search(query, id.startsWith("ytm"));
             if (results != null && !results.isEmpty()) {
-                log.info("[SlugYZeon] Scraper search found {} results", results.size());
                 List<AudioTrack> tracks = new ArrayList<>();
                 for (YouTubeProxyHandler.VideoInfo info : results) {
                     tracks.add(buildProxyTrack(info));
@@ -242,7 +240,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 }
 
                 if (info != null) {
-                    log.info("[SlugYZeon] successfully extracted info for videoId {}", videoId);
                     return buildProxyTrack(info);
                 }
             }
@@ -376,7 +373,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 original = originalYouTubeSource.decodeTrack(trackInfo, input);
             }
         } catch (Exception ignored) {
-            // Ignore EOF or legacy cache issues
         }
         return new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
     }

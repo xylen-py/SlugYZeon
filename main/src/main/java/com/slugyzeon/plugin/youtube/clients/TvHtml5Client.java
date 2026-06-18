@@ -8,16 +8,26 @@ public class TvHtml5Client extends InnerTubeClient {
 
     @Override
     public String getClientVersion() {
-        return "7.20260113.16.00";
+        return "7.20250120.19.00";
     }
 
     @Override
     public String getUserAgent() {
-        return "Mozilla/5.0 (Linux; Android) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 CrKey/1.54.248666";
+        return "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.5) AppleWebKit/537.36 (KHTML, like Gecko) 85.0.4183.93/6.5 TV Safari/537.36";
     }
 
     @Override
     public String getClientId() {
-        return "85";
+        return "7";
+    }
+
+    @Override
+    public boolean requiresCipher() {
+        return true;
+    }
+
+    @Override
+    public boolean isEmbedded() {
+        return false;
     }
 }

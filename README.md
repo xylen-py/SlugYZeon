@@ -91,6 +91,7 @@ plugins:
     youtube:
       localDiskCache: true # Automatically save streaming audio to disk to permanently bypass YouTube rate-limits
       diskCachePath: "youtube-cache" # Directory to save cached audio tracks
+      cipherUrl: "https://cipher.kikkia.dev" # External API to decrypt stream signatures for WEB clients
       mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
         - "ytmsearch:%QUERY%"
         - "scsearch:%QUERY%"

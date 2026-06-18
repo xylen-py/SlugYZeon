@@ -25,6 +25,16 @@ public class AndroidVrClient extends InnerTubeClient {
     }
 
     @Override
+    public boolean requiresCipher() {
+        return false;
+    }
+
+    @Override
+    public String getPlayerParams() {
+        return "CgIQBg%3D%3D";
+    }
+
+    @Override
     public void populateClientContext(ObjectNode clientNode) {
         super.populateClientContext(clientNode);
         clientNode.put("osName", "Android").put("osVersion", "14");

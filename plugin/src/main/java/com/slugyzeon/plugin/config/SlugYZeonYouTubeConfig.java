@@ -12,6 +12,15 @@ public class SlugYZeonYouTubeConfig {
     private List<String> mirrorProviders;
     private boolean localDiskCache = false;
     private String diskCachePath = "youtube-cache";
+    private String cipherUrl = "https://cipher.kikkia.dev";
+
+    public String getCipherUrl() {
+        return cipherUrl;
+    }
+
+    public void setCipherUrl(String cipherUrl) {
+        this.cipherUrl = cipherUrl;
+    }
 
     public boolean isLocalDiskCache() {
         return localDiskCache;

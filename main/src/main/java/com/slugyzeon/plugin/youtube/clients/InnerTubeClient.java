@@ -22,6 +22,18 @@ public abstract class InnerTubeClient {
         return INNERTUBE_API_KEY;
     }
 
+    public boolean requiresCipher() {
+        return true;
+    }
+
+    public String getPlayerParams() {
+        return null;
+    }
+
+    public boolean isEmbedded() {
+        return false;
+    }
+
     public void populateClientContext(ObjectNode clientNode) {
         clientNode.put("clientName", getClientName())
                 .put("clientVersion", getClientVersion())
