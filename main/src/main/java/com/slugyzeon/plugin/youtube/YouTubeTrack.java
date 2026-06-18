@@ -52,6 +52,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             if (webmFile.exists() && webmFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(webmFile)) {
                     log.info("Playing cached track for {}", videoId);
+                    webmFile.setLastModified(System.currentTimeMillis());
                     processDelegate(new MatroskaAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
                 } catch (Exception ignored) {
@@ -61,6 +62,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             if (m4aFile.exists() && m4aFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(m4aFile)) {
                     log.info("Playing cached track for {}", videoId);
+                    m4aFile.setLastModified(System.currentTimeMillis());
                     processDelegate(new MpegAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
                 } catch (Exception ignored) {

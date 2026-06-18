@@ -26,6 +26,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private final String diskCachePath;
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
+    private final java.util.concurrent.ScheduledExecutorService cleanupExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
 
     public YouTubeSourceManager(
             String[] mirrorProviders,
@@ -45,7 +46,31 @@ public class YouTubeSourceManager implements AudioSourceManager {
             if (!cacheDir.exists()) {
                 cacheDir.mkdirs();
             }
+            startCacheCleanupTask(cacheDir);
         }
+    }
+
+    private void startCacheCleanupTask(java.io.File cacheDir) {
+        cleanupExecutor.scheduleAtFixedRate(() -> {
+            try {
+                long expirationTime = System.currentTimeMillis() - java.time.Duration.ofDays(7).toMillis();
+                java.io.File[] files = cacheDir.listFiles();
+                int deletedCount = 0;
+                if (files != null) {
+                    for (java.io.File file : files) {
+                        if (file.isFile() && file.lastModified() < expirationTime) {
+                            if (file.delete()) {
+                                deletedCount++;
+                            }
+                        }
+                    }
+                }
+                if (deletedCount > 0) {
+                    log.info("Cleared {} tracks from local cache, inactive from last 7 days.", deletedCount);
+                }
+            } catch (Exception ignored) {
+            }
+        }, 1, 24, java.util.concurrent.TimeUnit.HOURS);
     }
 
     public boolean isLocalDiskCache() {
