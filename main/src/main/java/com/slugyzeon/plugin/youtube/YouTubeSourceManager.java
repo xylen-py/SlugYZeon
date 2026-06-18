@@ -182,7 +182,10 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 String author = track.getInfo().author;
                 if (title == null || title.equalsIgnoreCase("Unknown") || title.equalsIgnoreCase("Unknown title") ||
                     author == null || author.equalsIgnoreCase("Unknown") || author.equalsIgnoreCase("Unknown artist")) {
-                    AudioItem fallback = fallbackLoadItem(reference);
+                    AudioItem fallback = fetchOembedFallback(reference, track);
+                    if (fallback != null) return fallback;
+                    
+                    fallback = fallbackLoadItem(reference);
                     if (fallback != null) {
                         if (fallback instanceof AudioTrack) return wrapTrack((AudioTrack) fallback);
                         return fallback;
@@ -241,6 +244,33 @@ public class YouTubeSourceManager implements AudioSourceManager {
         }
 
         return isRetriableError(e.getCause());
+    }
+
+    private AudioItem fetchOembedFallback(AudioReference reference, AudioTrack original) {
+        try {
+            String videoId = extractVideoId(reference.identifier);
+            if (videoId == null) return null;
+            
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"))
+                .header("User-Agent", "Mozilla/5.0")
+                .GET().build();
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient().send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200) {
+                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
+                String title = json.path("title").asText("Unknown");
+                String author = json.path("author_name").asText("Unknown");
+                if (!"Unknown".equals(title) && !"Unknown".equals(author)) {
+                    AudioTrackInfo newInfo = new AudioTrackInfo(
+                        title, author, original.getDuration(), original.getIdentifier(),
+                        original.getInfo().isStream, original.getInfo().uri, 
+                        "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg", null);
+                    return new YouTubeTrack(newInfo, videoId, original, this);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     private AudioItem fallbackLoadItem(AudioReference reference) {
