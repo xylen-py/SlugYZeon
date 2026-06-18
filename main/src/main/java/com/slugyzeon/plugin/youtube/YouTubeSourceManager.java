@@ -177,21 +177,16 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
         if (result != null) {
             if (result instanceof AudioTrack) {
-                return fixTrackIfNeeded((AudioTrack) result, reference);
+                return enrichTrack((AudioTrack) result, reference);
             }
             if (result instanceof AudioPlaylist) {
                 AudioPlaylist original = (AudioPlaylist) result;
                 java.util.List<AudioTrack> fixedTracks = new java.util.ArrayList<>();
                 for (AudioTrack track : original.getTracks()) {
-                    AudioItem fixed = fixTrackIfNeeded(track, new AudioReference(track.getInfo().identifier, null));
-                    if (fixed instanceof AudioTrack) {
-                        fixedTracks.add((AudioTrack) fixed);
-                    } else {
-                        fixedTracks.add(wrapTrack(track));
-                    }
+                    fixedTracks.add((AudioTrack) enrichTrack(track, new AudioReference(track.getInfo().identifier, null)));
                 }
                 AudioTrack selectedTrack = original.getSelectedTrack() != null
-                        ? (AudioTrack) fixTrackIfNeeded(original.getSelectedTrack(), new AudioReference(original.getSelectedTrack().getInfo().identifier, null))
+                        ? (AudioTrack) enrichTrack(original.getSelectedTrack(), new AudioReference(original.getSelectedTrack().getInfo().identifier, null))
                         : null;
                 return new BasicAudioPlaylist(original.getName(), fixedTracks, selectedTrack, original.isSearchResult());
             }
@@ -200,29 +195,94 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
         if (loadError != null && isRetriableError(loadError)) {
             AudioItem fallback = fallbackLoadItem(reference);
-            if (fallback != null)
+            if (fallback != null) {
+                if (fallback instanceof AudioTrack) {
+                    return enrichTrack((AudioTrack) fallback, reference);
+                }
                 return fallback;
+            }
+        }
+
+        String videoId = extractVideoId(reference.identifier);
+        if (videoId != null) {
+            AudioTrack oembedTrack = buildOembedTrack(videoId);
+            if (oembedTrack != null) return oembedTrack;
         }
 
         return null;
     }
 
-    private AudioItem fixTrackIfNeeded(AudioTrack track, AudioReference reference) {
+    private AudioItem enrichTrack(AudioTrack track, AudioReference reference) {
         String title = track.getInfo().title;
         String author = track.getInfo().author;
-        if (title == null || title.trim().isEmpty() || title.toLowerCase().contains("unknown") ||
-            author == null || author.trim().isEmpty() || author.toLowerCase().contains("unknown")) {
-            
-            AudioItem fallback = fetchOembedFallback(reference, track);
-            if (fallback != null) return fallback;
-            
-            fallback = fallbackLoadItem(reference);
-            if (fallback != null) {
-                if (fallback instanceof AudioTrack) return wrapTrack((AudioTrack) fallback);
-                return fallback;
-            }
+        if (hasBadMetadata(title) || hasBadMetadata(author)) {
+            AudioTrack enriched = enrichWithOembed(track, reference);
+            if (enriched != null) return enriched;
         }
         return wrapTrack(track);
+    }
+
+    private static boolean hasBadMetadata(String value) {
+        return value == null || value.trim().isEmpty() || value.equalsIgnoreCase("unknown") 
+            || value.equalsIgnoreCase("unknown title") || value.equalsIgnoreCase("unknown artist");
+    }
+
+    private AudioTrack enrichWithOembed(AudioTrack original, AudioReference reference) {
+        try {
+            String videoId = extractVideoId(reference.identifier);
+            if (videoId == null) videoId = original.getInfo().identifier;
+            if (videoId == null) return null;
+
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=" + java.net.URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8") + "&format=json"))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .timeout(java.time.Duration.ofSeconds(5))
+                .GET().build();
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5)).build()
+                .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200 && res.body() != null) {
+                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
+                String title = json.path("title").asText(null);
+                String author = json.path("author_name").asText(null);
+                if (title != null && !title.isEmpty() && author != null && !author.isEmpty()) {
+                    String thumb = json.path("thumbnail_url").asText("https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg");
+                    AudioTrackInfo newInfo = new AudioTrackInfo(
+                        title, author, original.getDuration(), original.getIdentifier(),
+                        original.getInfo().isStream, original.getInfo().uri, thumb, null);
+                    return new YouTubeTrack(newInfo, videoId, original, this);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private AudioTrack buildOembedTrack(String videoId) {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=" + java.net.URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8") + "&format=json"))
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .timeout(java.time.Duration.ofSeconds(5))
+                .GET().build();
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5)).build()
+                .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200 && res.body() != null) {
+                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
+                String title = json.path("title").asText(null);
+                String author = json.path("author_name").asText(null);
+                if (title != null && !title.isEmpty()) {
+                    String thumb = json.path("thumbnail_url").asText("https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg");
+                    AudioTrackInfo info = new AudioTrackInfo(
+                        title, author != null ? author : "Unknown", Long.MAX_VALUE, videoId,
+                        false, "https://www.youtube.com/watch?v=" + videoId, thumb, null);
+                    return new YouTubeTrack(info, videoId, null, this);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     static boolean isRetriableError(Throwable e) {
@@ -263,32 +323,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
         return isRetriableError(e.getCause());
     }
 
-    private AudioItem fetchOembedFallback(AudioReference reference, AudioTrack original) {
-        try {
-            String videoId = extractVideoId(reference.identifier);
-            if (videoId == null) return null;
-            
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"))
-                .header("User-Agent", "Mozilla/5.0")
-                .GET().build();
-            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient().send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() == 200) {
-                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
-                String title = json.path("title").asText("Unknown");
-                String author = json.path("author_name").asText("Unknown");
-                if (!"Unknown".equals(title) && !"Unknown".equals(author)) {
-                    AudioTrackInfo newInfo = new AudioTrackInfo(
-                        title, author, original.getDuration(), original.getIdentifier(),
-                        original.getInfo().isStream, original.getInfo().uri, 
-                        "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg", null);
-                    return new YouTubeTrack(newInfo, videoId, original, this);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
 
     private AudioItem fallbackLoadItem(AudioReference reference) {
         String id = reference.identifier;
@@ -459,7 +493,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
         }
         
         YouTubeTrack decoded = new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
-        AudioItem fixed = fixTrackIfNeeded(decoded, new AudioReference(trackInfo.identifier, null));
+        AudioItem fixed = enrichTrack(decoded, new AudioReference(trackInfo.identifier, null));
         if (fixed instanceof AudioTrack) {
             return (AudioTrack) fixed;
         }
