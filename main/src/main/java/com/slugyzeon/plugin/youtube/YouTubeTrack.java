@@ -298,18 +298,37 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             AudioSourceManager sm = sourceManager.getOriginalYouTubeSource();
             if (sm == null) return null;
             
-            java.lang.reflect.Method getHttpInterface = null;
-            try { getHttpInterface = sm.getClass().getMethod("getHttpInterface"); } catch (Exception ignored) {}
+            java.lang.reflect.Method getHttpInterfaceManager = null;
+            try { getHttpInterfaceManager = sm.getClass().getMethod("getHttpInterfaceManager"); } catch (Exception ignored) {}
+            
+            Object httpInterfaceManager = null;
+            if (getHttpInterfaceManager != null) {
+                httpInterfaceManager = getHttpInterfaceManager.invoke(sm);
+            }
             
             Object httpInterface = null;
-            if (getHttpInterface != null) {
-                httpInterface = getHttpInterface.invoke(sm);
+            if (httpInterfaceManager != null) {
+                java.lang.reflect.Method getInterface = httpInterfaceManager.getClass().getMethod("getInterface");
+                httpInterface = getInterface.invoke(httpInterfaceManager);
+            } else {
+                try { 
+                    java.lang.reflect.Method getHttpInterface = sm.getClass().getMethod("getHttpInterface");
+                    httpInterface = getHttpInterface.invoke(sm);
+                } catch (Exception ignored) {}
+            }
+            
+            if (httpInterface == null) {
+                log.warn("[SlugYZeon] Could not get HttpInterface from original plugin");
+                return null;
             }
             
             java.lang.reflect.Method getTrackDetailsLoader = null;
             try { getTrackDetailsLoader = sm.getClass().getMethod("getTrackDetailsLoader"); } catch (Exception ignored) {}
             
-            if (getTrackDetailsLoader == null) return null;
+            if (getTrackDetailsLoader == null) {
+                log.warn("[SlugYZeon] Could not find getTrackDetailsLoader on {}", sm.getClass().getName());
+                return null;
+            }
             
             Object loader = getTrackDetailsLoader.invoke(sm);
             
@@ -320,7 +339,10 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     break;
                 }
             }
-            if (loadDetails == null) return null;
+            if (loadDetails == null) {
+                log.warn("[SlugYZeon] Could not find loadDetails on {}", loader.getClass().getName());
+                return null;
+            }
             
             Object trackDetails;
             if (loadDetails.getParameterCount() == 2 && httpInterface != null) {
@@ -359,7 +381,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             }
             return bestUrl;
         } catch (Exception e) {
-            log.debug("[SlugYZeon] Reflection extraction failed for {}: {}", videoId, e.getMessage());
+            log.warn("[SlugYZeon] Reflection extraction failed for {}: {}", videoId, e.getMessage(), e);
             return null;
         }
     }
