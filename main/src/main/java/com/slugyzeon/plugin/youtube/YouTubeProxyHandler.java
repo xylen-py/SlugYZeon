@@ -13,9 +13,12 @@ import java.time.Duration;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class YouTubeProxyHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(YouTubeProxyHandler.class);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(12);
 
@@ -27,18 +30,65 @@ public class YouTubeProxyHandler {
     private String cachedPlayerScriptUrl = null;
     private String cipherUrl = "https://cipher.kikkia.dev";
     private long visitorDataExpires = 0;
+    
+    private String refreshToken = null;
+    private String accessToken = null;
+    private long tokenExpiry = 0;
 
-    public YouTubeProxyHandler(String cipherUrl) {
+    private static class ClientHealth {
+        final InnerTubeClient client;
+        int score = 100;
+        long lastFailure = 0;
+
+        ClientHealth(InnerTubeClient client) {
+            this.client = client;
+        }
+
+        void markSuccess() {
+            if (score < 100) {
+                score = Math.min(100, score + 10);
+            }
+        }
+
+        void markFailure(int penalty) {
+            score = Math.max(0, score - penalty);
+            lastFailure = System.currentTimeMillis();
+        }
+    }
+
+    private final List<ClientHealth> clientPool = new ArrayList<>();
+
+    public YouTubeProxyHandler(String cipherUrl, String refreshToken) {
         if (cipherUrl != null && !cipherUrl.isEmpty()) {
             this.cipherUrl = cipherUrl;
+        }
+        if (refreshToken != null && !refreshToken.isEmpty() && !refreshToken.equalsIgnoreCase("null")) {
+            this.refreshToken = refreshToken;
         }
         this.httpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL).build();
         this.mapper = new ObjectMapper();
+        
+        clientPool.add(new ClientHealth(new AndroidClient()));
+        clientPool.add(new ClientHealth(new IosClient()));
+        clientPool.add(new ClientHealth(new TvCastClient()));
+        clientPool.add(new ClientHealth(new AndroidVrClient()));
+        clientPool.add(new ClientHealth(new WebRemixClient()));
+        clientPool.add(new ClientHealth(new TvHtml5Client()));
+        clientPool.add(new ClientHealth(new TvEmbeddedClient()));
+        clientPool.add(new ClientHealth(new WebClient()));
+        clientPool.add(new ClientHealth(new WebEmbeddedClient()));
     }
 
     public StreamResult getStream(String videoId) {
-        return tryInnertubeClients(videoId);
+        StreamResult res = tryInnertubeClients(videoId);
+        if (res == null) {
+            String counterpart = getCounterpartVideoId(videoId);
+            if (counterpart != null && !counterpart.equals(videoId)) {
+                res = tryInnertubeClients(counterpart);
+            }
+        }
+        return res;
     }
 
     public VideoInfo getVideoInfo(String videoId) {
@@ -85,8 +135,9 @@ public class YouTubeProxyHandler {
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body))).build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200 || response.body() == null)
+            if (response.statusCode() != 200 || response.body() == null) {
                 return null;
+            }
 
             JsonNode json = mapper.readTree(response.body());
             JsonNode contents = json.path("contents").path("singleColumnMusicWatchNextResultsRenderer")
@@ -109,7 +160,7 @@ public class YouTubeProxyHandler {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (Exception ignored) {
         }
         return null;
     }
@@ -123,62 +174,84 @@ public class YouTubeProxyHandler {
         return Collections.emptyList();
     }
 
-    private List<InnerTubeClient> getPlaybackClients() {
-        return Arrays.asList(
-                new TvCastClient(),
-                new AndroidClient(),
-                new IosClient(),
-                new AndroidVrClient(),
-                new WebRemixClient(),
-                new TvHtml5Client(),
-                new TvEmbeddedClient(),
-                new WebClient(),
-                new WebEmbeddedClient());
-    }
-
     private StreamResult tryInnertubeClients(String videoId) {
-        for (InnerTubeClient client : getPlaybackClients()) {
+        List<ClientHealth> candidates = new ArrayList<>(clientPool);
+        candidates.sort((a, b) -> {
+            if (a.score != b.score) {
+                return Integer.compare(b.score, a.score);
+            }
+            return Long.compare(a.lastFailure, b.lastFailure);
+        });
+
+        for (ClientHealth candidate : candidates) {
+            InnerTubeClient client = candidate.client;
             try {
                 JsonNode json = fetchInnertubePlayerResponse(videoId, client);
-                if (json == null)
+                if (json == null) {
+                    candidate.markFailure(10);
                     continue;
+                }
 
                 JsonNode playability = json.get("playabilityStatus");
                 if (playability != null) {
                     String status = playability.path("status").asText("");
-                    if (!"OK".equals(status))
+                    if (!"OK".equals(status)) {
+                        candidate.markFailure(status.contains("LOGIN_REQUIRED") ? 30 : 20);
                         continue;
+                    }
                 }
 
                 JsonNode streamingData = json.get("streamingData");
-                if (streamingData == null)
+                if (streamingData == null) {
+                    candidate.markFailure(15);
                     continue;
+                }
 
                 JsonNode formats = streamingData.get("adaptiveFormats");
-                if (formats == null || !formats.isArray())
+                if (formats == null || !formats.isArray()) {
+                    candidate.markFailure(15);
                     continue;
+                }
 
                 StreamResult result = pickBestAudioFormat(formats);
                 if (result != null) {
+                    candidate.markSuccess();
                     return new StreamResult(result.url, result.mimeType, result.source, result.bitrate, client.getUserAgent());
+                } else {
+                    candidate.markFailure(5);
                 }
             } catch (Exception ignored) {
+                candidate.markFailure(25);
             }
         }
         return null;
     }
 
     private VideoInfo tryInnertubeVideoInfo(String videoId) {
-        for (InnerTubeClient client : getPlaybackClients()) {
+        List<ClientHealth> candidates = new ArrayList<>(clientPool);
+        candidates.sort((a, b) -> {
+            if (a.score != b.score) {
+                return Integer.compare(b.score, a.score);
+            }
+            return Long.compare(a.lastFailure, b.lastFailure);
+        });
+
+        for (ClientHealth candidate : candidates) {
+            InnerTubeClient client = candidate.client;
             try {
                 JsonNode json = fetchInnertubePlayerResponse(videoId, client);
                 if (json != null) {
                     JsonNode videoDetails = json.get("videoDetails");
                     if (videoDetails != null) {
+                        candidate.markSuccess();
                         return buildVideoInfo(videoDetails, videoId);
                     }
+                    candidate.markFailure(10);
+                } else {
+                    candidate.markFailure(10);
                 }
             } catch (Exception ignored) {
+                candidate.markFailure(25);
             }
         }
         return null;
@@ -190,7 +263,7 @@ public class YouTubeProxyHandler {
         }
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://www.youtube.com/embed/" + (videoId != null ? videoId : "")))
+                    .uri(URI.create("https://www.youtube.com/watch?v=" + (videoId != null ? videoId : "dQw4w9WgXcQ")))
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
                     .header("Cookie", "YSC=cz5kYp3ZuIE; VISITOR_INFO1_LIVE=U-0T5oUyzf8;")
                     .GET().build();
@@ -202,19 +275,37 @@ public class YouTubeProxyHandler {
                     visitorDataExpires = System.currentTimeMillis() + 3600000;
                 }
                 
-                Matcher stsMatch = Pattern.compile("signatureTimestamp:(\\d+)").matcher(response.body());
-                if (stsMatch.find()) {
-                    cachedSts = Integer.parseInt(stsMatch.group(1));
-                }
-                
-                Matcher scriptMatch = Pattern.compile("src=\"(/[^\"]+/base\\.js)\"").matcher(response.body());
+                Matcher scriptMatch = Pattern.compile("\"jsUrl\":\"([^\"]+)\"").matcher(response.body());
                 if (scriptMatch.find()) {
                     cachedPlayerScriptUrl = "https://www.youtube.com" + scriptMatch.group(1);
+                    
+                    try {
+                        HttpRequest scriptReq = HttpRequest.newBuilder()
+                                .uri(URI.create(cachedPlayerScriptUrl))
+                                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                                .GET().build();
+                        HttpResponse<String> scriptRes = httpClient.send(scriptReq, HttpResponse.BodyHandlers.ofString());
+                        if (scriptRes.statusCode() == 200) {
+                            Matcher stsMatch = Pattern.compile("(?:signatureTimestamp|sts):(\\d+)").matcher(scriptRes.body());
+                            if (stsMatch.find()) {
+                                cachedSts = Integer.parseInt(stsMatch.group(1));
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to fetch player script for STS", e);
+                    }
                 }
                 
                 if (cachedVisitorData != null && cachedSts != null && cachedPlayerScriptUrl != null) {
                     return;
                 }
+            } else {
+                log.warn("Failed to fetch watch page for tokens, HTTP {}", response.statusCode());
+            }
+            
+            if (cachedSts == null) {
+                log.warn("Could not parse STS from player script, defaulting to 19889");
+                cachedSts = 19889;
             }
             
             com.fasterxml.jackson.databind.node.ObjectNode clientNode = mapper.createObjectNode();
@@ -243,11 +334,45 @@ public class YouTubeProxyHandler {
         } catch (Exception ignored) {}
     }
 
+    private synchronized void refreshOAuthToken() {
+        if (refreshToken == null || refreshToken.isEmpty()) return;
+        if (accessToken != null && System.currentTimeMillis() < tokenExpiry) return;
+
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode body = mapper.createObjectNode();
+            body.put("client_id", "861556708454-d6dlm3lh05idd8npek18k6be8ba3oc68.apps.googleusercontent.com");
+            body.put("client_secret", "SboVhoG9s0rNafixCSGGKXAT");
+            body.put("refresh_token", refreshToken);
+            body.put("grant_type", "refresh_token");
+
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create("https://www.youtube.com/o/oauth2/token"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
+                    .build();
+
+            HttpResponse<String> res = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200) {
+                JsonNode json = mapper.readTree(res.body());
+                if (json.has("access_token") && json.has("expires_in")) {
+                    accessToken = json.get("access_token").asText();
+                    long expiresIn = json.get("expires_in").asLong();
+                    tokenExpiry = System.currentTimeMillis() + (expiresIn * 1000) - 30000;
+                }
+            } else {
+                log.warn("Failed to refresh OAuth token, status: {}", res.statusCode());
+            }
+        } catch (Exception e) {
+            log.error("Error refreshing OAuth token: ", e);
+        }
+    }
+
     private JsonNode fetchInnertubePlayerResponse(String videoId, InnerTubeClient client) throws Exception {
         com.fasterxml.jackson.databind.node.ObjectNode clientNode = mapper.createObjectNode();
         client.populateClientContext(clientNode);
 
         refreshTokens(videoId);
+        refreshOAuthToken();
         if (cachedVisitorData != null) {
             clientNode.put("visitorData", cachedVisitorData);
         }
@@ -265,7 +390,7 @@ public class YouTubeProxyHandler {
             body.put("params", client.getPlayerParams());
         }
 
-        if (client.requiresCipher() && cachedSts != null) {
+        if (cachedSts != null) {
             com.fasterxml.jackson.databind.node.ObjectNode playbackContext = mapper.createObjectNode();
             com.fasterxml.jackson.databind.node.ObjectNode contentPlaybackContext = mapper.createObjectNode();
             contentPlaybackContext.put("signatureTimestamp", cachedSts);
@@ -274,13 +399,9 @@ public class YouTubeProxyHandler {
         }
 
         if (client.isEmbedded()) {
-            com.fasterxml.jackson.databind.node.ObjectNode serializedEmbedConfig = mapper.createObjectNode();
-            serializedEmbedConfig.put("hideInfoBar", true);
-            serializedEmbedConfig.put("disableRelatedVideos", true);
-            body.set("serializedThirdPartyEmbedConfig", serializedEmbedConfig);
         }
 
-        if ("TVHTML5".equals(client.getClientName())) {
+        if ("TVHTML5".equals(client.getClientName()) || "TVHTML5_CAST".equals(client.getClientName())) {
             body.put("thirdParty", "https://www.youtube.com");
         }
 
@@ -298,49 +419,50 @@ public class YouTubeProxyHandler {
             reqBuilder.header("X-Goog-Visitor-Id", cachedVisitorData);
         }
         
+        if (accessToken != null && ("TVHTML5".equals(client.getClientName()) || "TVHTML5_CAST".equals(client.getClientName()))) {
+            reqBuilder.header("Authorization", "Bearer " + accessToken);
+        }
+        
         if (client.getClientName().equals("ANDROID")) {
             reqBuilder.header("X-Goog-Api-Format-Version", "2");
         }
 
         if (client.isEmbedded()) {
             reqBuilder.header("Referer", "https://www.youtube.com");
-        } else {
-            reqBuilder.header("Referer", "https://www.youtube.com/watch?v=" + videoId);
-            reqBuilder.header("Origin", "https://www.youtube.com");
         }
 
         HttpResponse<String> response = httpClient.send(reqBuilder.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200 || response.body() == null)
+        if (response.statusCode() != 200) {
             return null;
+        }
+        if (response.body() == null) {
+            return null;
+        }
 
         return mapper.readTree(response.body());
     }
 
-    private String resolveCipher(String cipherStr) {
-        if (cachedPlayerScriptUrl == null) return null;
+    private String resolveUrlParams(String url, String s, String sp) {
+        if (url == null) return url;
         try {
-            String url = null;
-            String s = null;
-            String sp = "sig";
-            for (String part : cipherStr.split("&")) {
-                if (part.startsWith("url=")) url = java.net.URLDecoder.decode(part.substring(4), "UTF-8");
-                else if (part.startsWith("s=")) s = java.net.URLDecoder.decode(part.substring(2), "UTF-8");
-                else if (part.startsWith("sp=")) sp = java.net.URLDecoder.decode(part.substring(3), "UTF-8");
-            }
-            if (url == null) return null;
-
             String nParam = null;
             Matcher nMatch = Pattern.compile("[?&]n=([^&]+)").matcher(url);
             if (nMatch.find()) {
                 nParam = nMatch.group(1);
             }
 
+            if (s == null && nParam == null) {
+                return url;
+            }
+
             com.fasterxml.jackson.databind.node.ObjectNode body = mapper.createObjectNode();
             body.put("stream_url", url);
-            body.put("player_url", cachedPlayerScriptUrl);
+            if (cachedPlayerScriptUrl != null) {
+                body.put("player_url", cachedPlayerScriptUrl);
+            }
             if (s != null) {
                 body.put("encrypted_signature", s);
-                body.put("signature_key", sp);
+                body.put("signature_key", sp != null ? sp : "sig");
             }
             if (nParam != null) {
                 body.put("n_param", nParam);
@@ -362,6 +484,23 @@ public class YouTubeProxyHandler {
                 }
             }
         } catch (Exception ignored) {}
+        return url;
+    }
+
+    private String resolveCipher(String cipherStr) {
+        try {
+            String url = null;
+            String s = null;
+            String sp = "sig";
+            for (String part : cipherStr.split("&")) {
+                if (part.startsWith("url=")) url = java.net.URLDecoder.decode(part.substring(4), "UTF-8");
+                else if (part.startsWith("s=")) s = java.net.URLDecoder.decode(part.substring(2), "UTF-8");
+                else if (part.startsWith("sp=")) sp = java.net.URLDecoder.decode(part.substring(3), "UTF-8");
+            }
+            if (url != null) {
+                return resolveUrlParams(url, s, sp);
+            }
+        } catch (Exception ignored) {}
         return null;
     }
 
@@ -376,11 +515,11 @@ public class YouTubeProxyHandler {
                 continue;
 
             String url = null;
-            if (fmt.has("url")) {
-                url = fmt.get("url").asText(null);
-            } else if (fmt.has("signatureCipher") || fmt.has("cipher")) {
+            if (fmt.has("signatureCipher") || fmt.has("cipher")) {
                 String cipherStr = fmt.has("signatureCipher") ? fmt.path("signatureCipher").asText() : fmt.path("cipher").asText();
                 url = resolveCipher(cipherStr);
+            } else if (fmt.has("url")) {
+                url = resolveUrlParams(fmt.get("url").asText(null), null, null);
             }
 
             if (url == null || url.isEmpty())

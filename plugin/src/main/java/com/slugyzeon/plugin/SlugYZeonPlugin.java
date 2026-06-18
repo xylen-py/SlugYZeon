@@ -35,6 +35,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
     private DeezerAudioSourceManager deezer;
 
     public SlugYZeonPlugin(
+            org.springframework.core.env.Environment env,
             SlugYZeonSourcesConfig sourcesConfig,
             GaanaConfig gaanaConfig,
             AmazonMusicConfig amazonMusicConfig,
@@ -44,6 +45,11 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             SlugYZeonYouTubeConfig youtubeConfig,
             SlugYZeonDeezerConfig deezerConfig) {
         log.info("Loading SlugYZeoN plugin...");
+        
+        String youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refresh-token");
+        if (youtubeRefreshToken == null) {
+            youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refreshToken");
+        }
 
         if (sourcesConfig.isGaana()) {
             this.gaana = new GaanaAudioSourceManager(
@@ -107,6 +113,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     youtubeConfig.isLocalDiskCache(),
                     youtubeConfig.getDiskCachePath(),
                     youtubeConfig.getCipherUrl(),
+                    youtubeRefreshToken,
                     unused -> manager);
         }
     }

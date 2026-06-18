@@ -51,17 +51,19 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
             if (webmFile.exists() && webmFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(webmFile)) {
+                    log.info("Playing cached track for {}", videoId);
                     processDelegate(new MatroskaAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
-                } catch (Exception e) {
+                } catch (Exception ignored) {
                 }
             }
             java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
             if (m4aFile.exists() && m4aFile.length() > 0) {
                 try (java.io.FileInputStream fis = new java.io.FileInputStream(m4aFile)) {
+                    log.info("Playing cached track for {}", videoId);
                     processDelegate(new MpegAudioTrack(trackInfo, new com.sedmelluq.discord.lavaplayer.tools.io.NonSeekableInputStream(fis)), executor);
                     return;
-                } catch (Exception e) {
+                } catch (Exception ignored) {
                 }
             }
             triggerBackgroundCache();
@@ -86,7 +88,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             return;
 
         throw new FriendlyException(
-                "[SlugYZeon] All fallbacks exhausted for " + videoId,
+                "All fallbacks exhausted for " + videoId,
                 FriendlyException.Severity.SUSPICIOUS,
                 new RuntimeException("Video " + videoId));
     }
@@ -374,7 +376,9 @@ public class YouTubeTrack extends DelegatedAudioTrack {
     private void triggerBackgroundCache() {
         java.io.File webmFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".webm");
         java.io.File m4aFile = new java.io.File(sourceManager.getDiskCachePath(), videoId + ".m4a");
-        if (webmFile.exists() || m4aFile.exists()) return;
+        if (webmFile.exists() || m4aFile.exists()) {
+            return;
+        }
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -384,6 +388,21 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
                 if (streamUrl == null) {
                     YouTubeProxyHandler.StreamResult stream = sourceManager.getProxyHandler().getStream(videoId);
+                    if (stream == null) {
+                        String query = trackInfo.title;
+                        if (trackInfo.author != null && !trackInfo.author.isEmpty() && !"Unknown".equalsIgnoreCase(trackInfo.author) && !"Unknown artist".equalsIgnoreCase(trackInfo.author)) {
+                            query = trackInfo.title + " " + trackInfo.author;
+                        }
+                        java.util.List<YouTubeProxyHandler.VideoInfo> searchRes = sourceManager.getProxyHandler().search(query, true);
+                        if (searchRes == null || searchRes.isEmpty()) {
+                            searchRes = sourceManager.getProxyHandler().search(query, false);
+                        }
+                        if (searchRes != null && !searchRes.isEmpty()) {
+                            String newId = searchRes.get(0).videoId;
+                            stream = sourceManager.getProxyHandler().getStream(newId);
+                        }
+                    }
+
                     if (stream == null) {
                         return;
                     }
@@ -414,8 +433,12 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                         }
                     }
                     partFile.renameTo(targetFile);
+                    log.info("Successfully cached {} to disk", videoId);
+                } else {
+                    log.warn("Failed to cache {} to disk", videoId);
                 }
             } catch (Exception e) {
+                log.warn("Failed to cache {} to disk", videoId);
             }
         });
     }

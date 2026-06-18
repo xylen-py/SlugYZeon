@@ -10,12 +10,12 @@ public class IosClient extends InnerTubeClient {
 
     @Override
     public String getClientVersion() {
-        return "20.03.02";
+        return "21.02.1";
     }
 
     @Override
     public String getUserAgent() {
-        return "com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)";
+        return "com.google.ios.youtube/21.02.1 (iPhone16,2; U; CPU iOS 18_2 like Mac OS X;)";
     }
 
     @Override
@@ -29,15 +29,10 @@ public class IosClient extends InnerTubeClient {
     }
 
     @Override
-    public String getPlayerParams() {
-        return "CgIQBg%3D%3D";
-    }
-
-    @Override
     public void populateClientContext(ObjectNode clientNode) {
         super.populateClientContext(clientNode);
-        clientNode.put("osName", "iOS")
-                .put("osVersion", "18.2.1")
+        clientNode.put("osName", "iPhone")
+                .put("osVersion", "18.2.22C152")
                 .put("deviceMake", "Apple")
                 .put("deviceModel", "iPhone16,2");
     }

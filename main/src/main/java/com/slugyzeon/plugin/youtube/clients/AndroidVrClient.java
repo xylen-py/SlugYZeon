@@ -11,12 +11,12 @@ public class AndroidVrClient extends InnerTubeClient {
 
     @Override
     public String getClientVersion() {
-        return "1.56.24";
+        return "1.65.10";
     }
 
     @Override
     public String getUserAgent() {
-        return "com.google.android.apps.youtube.vr/1.56.24 (Linux; U; Android 14) identity";
+        return "Mozilla/5.0 (X11; Linux x86_64; Quest 3) AppleWebKit/537.36 (KHTML, like Gecko) OculusBrowser/39.3.0.11.46.766180192 Chrome/136.0.7103.177 VR Safari/537.36,gzip(gfe);GoogleHypersonic";
     }
 
     @Override
@@ -37,6 +37,6 @@ public class AndroidVrClient extends InnerTubeClient {
     @Override
     public void populateClientContext(ObjectNode clientNode) {
         super.populateClientContext(clientNode);
-        clientNode.put("osName", "Android").put("osVersion", "14");
+        clientNode.put("osName", "Android").put("osVersion", "15").put("androidSdkVersion", "35").put("deviceMake", "Google");
     }
 }

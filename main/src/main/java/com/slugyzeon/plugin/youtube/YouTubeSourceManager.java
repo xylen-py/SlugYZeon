@@ -32,8 +32,9 @@ public class YouTubeSourceManager implements AudioSourceManager {
             boolean localDiskCache,
             String diskCachePath,
             String cipherUrl,
+            String refreshToken,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
-        this.proxyHandler = new YouTubeProxyHandler(cipherUrl);
+        this.proxyHandler = new YouTubeProxyHandler(cipherUrl, refreshToken);
         this.audioPlayerManager = audioPlayerManager;
         this.mirrorProviders = mirrorProviders != null ? mirrorProviders : new String[] { "scsearch:%QUERY%" };
         this.localDiskCache = localDiskCache;
@@ -96,7 +97,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 this.originalYouTubeSource = source;
                 sources.set(i, this);
                 this.attached = true;
-                log.info("Registered Youtube audio Fallback manager...");
                 return true;
             }
         }
