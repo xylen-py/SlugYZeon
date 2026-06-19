@@ -234,8 +234,8 @@ public class AmazonMusicApiHandler {
 
         Map<String, Object> trackInfo = new LinkedHashMap<>();
         trackInfo.put("identifier", identifier);
-        trackInfo.put("title", decodeHtml(getText(item.path("primaryText"), "Unknown Track")));
-        trackInfo.put("author", decodeHtml(getText(item.path("secondaryText"), "Unknown Artist")));
+        trackInfo.put("title", getText(item.path("primaryText"), "Unknown Track"));
+        trackInfo.put("author", getText(item.path("secondaryText"), "Unknown Artist"));
         trackInfo.put("uri", "https://music.amazon.com/tracks/" + identifier);
         trackInfo.put("artworkUrl", upgradeArtwork(item.path("image").asText(null)));
         trackInfo.put("length", extractDuration(item));
@@ -439,13 +439,13 @@ public class AmazonMusicApiHandler {
 
                 Map<String, Object> trackInfo = new LinkedHashMap<>();
                 trackInfo.put("identifier", trackId);
-                trackInfo.put("title", decodeHtml(getText(item.path("primaryText"), "Unknown Track")));
+                trackInfo.put("title", getText(item.path("primaryText"), "Unknown Track"));
                 
                 String artist = getText(item.path("secondaryText2"), null);
                 if (artist == null) artist = getText(item.path("secondaryText1"), collectionArtist);
                 if (artist == null) artist = "Unknown Artist";
                 
-                trackInfo.put("author", decodeHtml(artist));
+                trackInfo.put("author", artist);
                 trackInfo.put("uri", "https://music.amazon.com/tracks/" + trackId);
                 trackInfo.put("artworkUrl", upgradeArtwork(item.path("image").asText(collectionImage)));
                 

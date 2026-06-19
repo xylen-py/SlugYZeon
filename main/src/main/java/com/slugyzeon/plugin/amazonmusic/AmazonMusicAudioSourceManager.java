@@ -216,8 +216,8 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
         if (data == null)
             return null;
 
-        String title = decodeHtml((String) data.getOrDefault("title", "Unknown Track"));
-        String author = decodeHtml((String) data.getOrDefault("author", "Unknown Artist"));
+        String title = (String) data.getOrDefault("title", "Unknown Track");
+        String author = (String) data.getOrDefault("author", "Unknown Artist");
         String identifier = (String) data.getOrDefault("identifier", "");
         String uri = (String) data.get("uri");
         String artworkUrl = (String) data.get("artworkUrl");
@@ -226,20 +226,6 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
 
         AudioTrackInfo info = new AudioTrackInfo(title, author, length, identifier, false, uri, artworkUrl, isrc);
         return new AmazonMusicAudioTrack(info, null, null, null, null, null, false, this);
-    }
-
-    private static String decodeHtml(String text) {
-        if (text == null)
-            return null;
-        return text
-                .replace("&quot;", "\"")
-                .replace("&amp;", "&")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&apos;", "'")
-                .replace("&#39;", "'")
-                .replace("&#x27;", "'")
-                .replace("&nbsp;", " ");
     }
 
     public AmazonMusicApiHandler getApiHandler() {
