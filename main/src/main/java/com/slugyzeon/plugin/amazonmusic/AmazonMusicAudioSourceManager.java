@@ -26,7 +26,7 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
     public static final String SEARCH_PREFIX = "azsearch:";
 
     public static final Pattern AMAZON_MUSIC_URL = Pattern.compile(
-            "https?://music\\.amazon\\.[a-z.]+/(?:.*/)?(?<type>track|album|playlist|artist)s?/(?<id>[a-zA-Z0-9]+)",
+            "https?://music\\.amazon\\.[a-z.]+/(?:.*/)?(?<type>track|album|playlist|artist|user-playlist)s?/(?<id>[a-zA-Z0-9]+)",
             Pattern.CASE_INSENSITIVE);
     public static final Pattern AMAZON_DP_URL = Pattern.compile(
             "https?://(?:www\\.)?amazon\\.[a-z.]+/dp/(?<id>[a-zA-Z0-9]+)",
@@ -81,6 +81,8 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                 }
                 if (trackAsin != null)
                     return resolveTrack(identifier, trackAsin);
+
+                if (type.equals("user-playlist")) type = "playlist";
 
                 switch (type) {
                     case "track":
