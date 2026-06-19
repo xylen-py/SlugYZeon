@@ -218,18 +218,13 @@ public class AmazonMusicApiHandler {
     }
 
     private Map<String, Object> parseSearchItem(JsonNode item) {
-        boolean isSong = "song".equals(item.path("label").asText(""));
-        String iface = item.path("interface").asText("");
-        boolean isSquare = iface.contains("SquareHorizontalItemElement");
-
-        if (!isSong && !isSquare)
-            return null;
-
         String deeplink = item.path("primaryLink").path("deeplink").asText(null);
+        if (deeplink == null || (!deeplink.contains("trackAsin=") && !deeplink.contains("/tracks/"))) {
+            return null;
+        }
+
         String identifier = extractIdentifier(deeplink);
         if (identifier == null)
-            return null;
-        if (!isSong && (deeplink == null || !deeplink.contains("trackAsin=")))
             return null;
 
         Map<String, Object> trackInfo = new LinkedHashMap<>();
@@ -372,26 +367,39 @@ public class AmazonMusicApiHandler {
         if (template.isMissingNode())
             return null;
 
-        String collectionName = getText(template.path("headerText"), "Unknown Collection");
-        String collectionArtist = getText(template.path("headerPrimaryText"), null);
-        String collectionImage = upgradeArtwork(template.path("headerImage").asText(null));
+        JsonNode headerWidget = template;
+        if (!headerWidget.has("headerText") && template.path("widgets").isArray()) {
+            for (JsonNode w : template.path("widgets")) {
+                if ("DetailHeaderWidget".equals(w.path("interface").asText(""))) {
+                    headerWidget = w;
+                    break;
+                }
+            }
+        }
+
+        String collectionName = getText(headerWidget.path("headerText"), "Unknown Collection");
+        String collectionArtist = getText(headerWidget.path("headerPrimaryText"), null);
+        String collectionImage = upgradeArtwork(headerWidget.path("headerImage").asText(null));
         
         String globalIsrc = null;
+        long globalDuration = 0;
         JsonNode seoScripts = template.path("templateData").path("seoHead").path("script");
         if (seoScripts.isArray()) {
             for (JsonNode script : seoScripts) {
                 String innerHtml = script.path("innerHTML").asText("");
-                if (!innerHtml.isEmpty() && innerHtml.contains("\"isrcCode\"")) {
+                if (!innerHtml.isEmpty() && (innerHtml.contains("\"isrcCode\"") || innerHtml.contains("\"duration\""))) {
                     try {
                         JsonNode ldNode = objectMapper.readTree(innerHtml);
                         if (ldNode.isArray()) ldNode = ldNode.get(0);
                         if (ldNode.has("isrcCode")) {
                             globalIsrc = ldNode.get("isrcCode").asText(null);
+                            if (ldNode.has("duration")) globalDuration = parseISO8601Duration(ldNode.get("duration").asText(""));
                             break;
                         } else if (ldNode.has("track") && ldNode.get("track").isArray()) {
                             for (JsonNode t : ldNode.get("track")) {
-                                if (t.has("isrcCode") && t.path("url").asText("").contains(id)) {
-                                    globalIsrc = t.get("isrcCode").asText(null);
+                                if (t.path("url").asText("").contains(id)) {
+                                    if (t.has("isrcCode")) globalIsrc = t.get("isrcCode").asText(null);
+                                    if (t.has("duration")) globalDuration = parseISO8601Duration(t.get("duration").asText(""));
                                     break;
                                 }
                             }
@@ -401,6 +409,40 @@ public class AmazonMusicApiHandler {
             }
         }
 
+        if ("track".equals(type)) {
+            Map<String, Object> trackInfo = new LinkedHashMap<>();
+            trackInfo.put("identifier", id);
+            trackInfo.put("title", collectionName != null && !collectionName.equals("Unknown Collection") ? collectionName : "Unknown Track");
+            trackInfo.put("author", collectionArtist != null ? collectionArtist : "Unknown Artist");
+            trackInfo.put("uri", "https://music.amazon.com/tracks/" + id);
+            trackInfo.put("artworkUrl", collectionImage);
+            trackInfo.put("isrc", globalIsrc);
+            trackInfo.put("_type", "track");
+
+            long length = globalDuration;
+            
+            JsonNode widgets = template.path("widgets");
+            if (widgets.isArray()) {
+                for (JsonNode w : widgets) {
+                    if (w.has("items")) {
+                        for (JsonNode item : w.get("items")) {
+                            String deeplink = item.path("primaryLink").path("deeplink").asText("");
+                            if (deeplink.contains(id)) {
+                                if (length == 0) length = extractDuration(item);
+                                if (globalIsrc == null && item.has("trackIsrc")) {
+                                    trackInfo.put("isrc", item.get("trackIsrc").asText(null));
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            trackInfo.put("length", length);
+            return trackInfo;
+        }
+
         List<Map<String, Object>> tracks = new ArrayList<>();
         JsonNode widgets = template.path("widgets");
         
@@ -408,7 +450,7 @@ public class AmazonMusicApiHandler {
         if (widgets.isArray()) {
             for (JsonNode w : widgets) {
                 String header = w.path("header").asText("").toLowerCase();
-                if (header.contains("tracklist") || header.contains("popular") || "track".equals(type) || targetWidget == null) {
+                if (header.contains("tracklist") || header.contains("popular") || targetWidget == null) {
                     if (w.has("items")) {
                         targetWidget = w;
                         break;
@@ -432,9 +474,6 @@ public class AmazonMusicApiHandler {
                     }
                 }
                 
-                if (trackId == null && "track".equals(type)) {
-                    trackId = id;
-                }
                 if (trackId == null) continue;
 
                 Map<String, Object> trackInfo = new LinkedHashMap<>();
@@ -458,25 +497,10 @@ public class AmazonMusicApiHandler {
                 }
                 trackInfo.put("isrc", itemIsrc);
 
-                if ("track".equals(type)) {
-                    if (trackId.equals(id)) {
-                        trackInfo.put("_type", "track");
-                        return trackInfo;
-                    }
-                } else {
-                    tracks.add(trackInfo);
-                }
+                tracks.add(trackInfo);
             }
         }
         
-        if ("track".equals(type) && !tracks.isEmpty()) {
-            Map<String, Object> t = tracks.get(0);
-            t.put("_type", "track");
-            return t;
-        }
-
-        if ("track".equals(type)) return null;
-
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("_type", "playlist");
         result.put("name", collectionName);
