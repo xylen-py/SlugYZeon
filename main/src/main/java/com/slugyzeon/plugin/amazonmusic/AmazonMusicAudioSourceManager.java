@@ -82,8 +82,6 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                 if (trackAsin != null)
                     return resolveTrack(identifier, trackAsin);
 
-                if (type.equals("user-playlist")) type = "playlist";
-
                 switch (type) {
                     case "track":
                     case "dp":
@@ -91,7 +89,8 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                     case "album":
                         return resolveCollection(identifier, "album", id);
                     case "playlist":
-                        return resolveCollection(identifier, "playlist", id);
+                    case "user-playlist":
+                        return resolveCollection(identifier, type, id);
                     case "artist":
                         return resolveCollection(identifier, "artist", id);
                     default:

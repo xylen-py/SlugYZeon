@@ -271,6 +271,10 @@ public class AmazonMusicApiHandler {
     }
 
     public Map<String, Object> fetchEntity(String url, String id, String type) throws IOException {
+        if ("user-playlist".equals(type)) {
+            return fetchUserPlaylistEmbed(id);
+        }
+
         JsonNode cfg = getAmazonConfig();
         if (cfg == null)
             throw new IOException("Failed to retrieve Amazon Music CSRF config");
@@ -315,6 +319,9 @@ public class AmazonMusicApiHandler {
                 break;
             case "artist":
                 apiUrl = getBaseApi() + "showCatalogTracks";
+                break;
+            case "user-playlist":
+                apiUrl = getBaseApi() + "showLibraryPlaylist";
                 break;
             case "playlist":
             default:
@@ -609,5 +616,92 @@ public class AmazonMusicApiHandler {
         if (node.isObject())
             return decodeHtml(node.path("text").asText(fallback));
         return decodeHtml(node.asText(fallback));
+    }
+
+    private Map<String, Object> fetchUserPlaylistEmbed(String id) throws IOException {
+        String embedUrl = "https://music.amazon.com/embed/" + id;
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(embedUrl))
+                .header("User-Agent", BROWSER_UA)
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200 || response.body() == null) {
+                return Collections.emptyMap();
+            }
+
+            String html = response.body();
+
+            String title = "Unknown User Playlist";
+            java.util.regex.Matcher mTitle = java.util.regex.Pattern.compile("<title>Amazon Music - Playlist(.*?)</title>").matcher(html);
+            if (mTitle.find()) {
+                title = decodeHtml(mTitle.group(1).trim());
+            }
+
+            List<Map<String, Object>> tracks = new ArrayList<>();
+            String[] chunks = html.split("<li class=\"trackItem");
+            for (int i = 1; i < chunks.length; i++) {
+                String chunk = chunks[i];
+                
+                String trackId = null;
+                java.util.regex.Matcher mId = java.util.regex.Pattern.compile("data-asin=\"([^\"]+)\"").matcher(chunk);
+                if (mId.find()) trackId = mId.group(1);
+
+                if (trackId == null) {
+                    mId = java.util.regex.Pattern.compile("trackAsin(?:&#x3D;|=)([^\"]+)&").matcher(chunk);
+                    if (mId.find()) trackId = mId.group(1);
+                }
+
+                if (trackId == null) continue;
+
+                String trackName = "Unknown Track";
+                java.util.regex.Matcher mName = java.util.regex.Pattern.compile("aria-label=\"song,\\s*([^\"]+)\"").matcher(chunk);
+                if (mName.find()) trackName = mName.group(1);
+                else {
+                    mName = java.util.regex.Pattern.compile("class=\"trackListTitle truncate\">.*?class=\"refLink white\"[^>]*>(.*?)</a>", java.util.regex.Pattern.DOTALL).matcher(chunk);
+                    if (mName.find()) trackName = mName.group(1).trim();
+                }
+                trackName = decodeHtml(trackName);
+
+                String artistName = "Unknown Artist";
+                java.util.regex.Matcher mArtist = java.util.regex.Pattern.compile("aria-label=\"artist,\\s*([^\"]+)\"").matcher(chunk);
+                if (mArtist.find()) artistName = mArtist.group(1);
+                else {
+                    mArtist = java.util.regex.Pattern.compile("class=\"trackListArtist truncate\">.*?class=\"refLink grey\"[^>]*>(.*?)</a>", java.util.regex.Pattern.DOTALL).matcher(chunk);
+                    if (mArtist.find()) artistName = mArtist.group(1).trim();
+                }
+                artistName = decodeHtml(artistName);
+
+                String artwork = null;
+                java.util.regex.Matcher mArt = java.util.regex.Pattern.compile("<img[^>]+src=\"([^\"]+)\"").matcher(chunk);
+                if (mArt.find()) artwork = upgradeArtwork(mArt.group(1));
+
+                Map<String, Object> t = new LinkedHashMap<>();
+                t.put("identifier", trackId);
+                t.put("title", trackName);
+                t.put("author", artistName);
+                t.put("uri", "https://music.amazon.com/tracks/" + trackId);
+                if (artwork != null) t.put("artworkUrl", artwork);
+                t.put("length", 0L);
+                t.put("_type", "track");
+                
+                tracks.add(t);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("_type", "playlist");
+            result.put("name", title);
+            result.put("author", "Amazon Music User");
+            if (!tracks.isEmpty() && tracks.get(0).containsKey("artworkUrl")) {
+                result.put("artworkUrl", tracks.get(0).get("artworkUrl"));
+            }
+            result.put("tracks", tracks);
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyMap();
+        }
     }
 }
