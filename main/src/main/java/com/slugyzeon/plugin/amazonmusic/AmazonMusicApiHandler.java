@@ -22,6 +22,7 @@ import java.util.regex.Pattern;
 public class AmazonMusicApiHandler {
 
     private static final Logger log = LoggerFactory.getLogger(AmazonMusicApiHandler.class);
+    private static final Pattern ISO8601_DURATION = Pattern.compile("PT(?:([0-9]+)H)?(?:([0-9]+)M)?(?:([0-9]+(?:\\\\.[0-9]+)?)S)?");
 
     private static final String BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
