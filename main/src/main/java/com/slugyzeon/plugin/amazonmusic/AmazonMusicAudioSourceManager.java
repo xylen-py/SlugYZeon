@@ -75,8 +75,11 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                 String type = matcher.group("type").toLowerCase();
                 String id = matcher.group("id");
 
-                String trackAsin = AmazonMusicApiHandler.extractIdentifier(identifier);
-                if (trackAsin != null && identifier.contains("trackAsin="))
+                String trackAsin = null;
+                if (identifier.contains("trackAsin=")) {
+                    trackAsin = identifier.split("trackAsin=")[1].split("&")[0].split("#")[0];
+                }
+                if (trackAsin != null)
                     return resolveTrack(identifier, trackAsin);
 
                 switch (type) {
@@ -84,11 +87,11 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                     case "dp":
                         return resolveTrack(identifier, id);
                     case "album":
-                        return resolveCollection(identifier, "album");
+                        return resolveCollection(identifier, "album", id);
                     case "playlist":
-                        return resolveCollection(identifier, "playlist");
+                        return resolveCollection(identifier, "playlist", id);
                     case "artist":
-                        return resolveCollection(identifier, "artist");
+                        return resolveCollection(identifier, "artist", id);
                     default:
                         return null;
                 }
@@ -138,21 +141,17 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem resolveTrack(String url, String id) throws IOException {
-        Map<String, Object> data = api.fetchFromPage(url, id);
+        Map<String, Object> data = api.fetchEntity(url, id, "track");
 
         if (data != null && "track".equals(data.get("_type")))
             return mapTrack(data);
-
-        Map<String, Object> odesliData = api.fetchFromOdesli(url);
-        if (odesliData != null)
-            return mapTrack(odesliData);
 
         return AudioReference.NO_TRACK;
     }
 
     @SuppressWarnings("unchecked")
-    public AudioItem resolveCollection(String url, String type) throws IOException {
-        Map<String, Object> data = api.fetchFromPage(url, null);
+    public AudioItem resolveCollection(String url, String type, String id) throws IOException {
+        Map<String, Object> data = api.fetchEntity(url, id, type);
 
         if (data == null || !"playlist".equals(data.get("_type")))
             return AudioReference.NO_TRACK;

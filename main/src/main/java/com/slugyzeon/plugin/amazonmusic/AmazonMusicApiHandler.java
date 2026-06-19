@@ -28,21 +28,8 @@ public class AmazonMusicApiHandler {
     private static final long CONFIG_TTL_MS = 120_000;
     private static final int MAX_RETRIES = 2;
 
-    private static final String SEARCH_API = "https://na.mesk.skill.music.a2z.com/api/showSearch";
-    private static final String CONFIG_URL = "https://music.amazon.com/config.json";
 
-    private static final Pattern ISO8601_DURATION = Pattern.compile("PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?");
-    private static final Pattern JSON_LD_PATTERN = Pattern
-            .compile("<script [^>]*type=\"application/ld\\+json\"[^>]*>([\\s\\S]*?)</script>");
-    private static final Pattern OG_IMAGE_PATTERN = Pattern.compile("<meta property=\"og:image\" content=\"([^\"]+)\"");
-    private static final Pattern OG_TITLE_PATTERN = Pattern.compile("<meta property=\"og:title\" content=\"([^\"]+)\"");
-    private static final Pattern HEADER_PRIMARY_TEXT = Pattern
-            .compile("<music-detail-header[^>]*primary-text=\"([^\"]+)\"");
-    private static final Pattern HEADER_SECONDARY_TEXT = Pattern
-            .compile("<music-detail-header[^>]*secondary-text(?:-1)?=\"([^\"]+)\"");
-    private static final Pattern HEADER_IMAGE_SRC = Pattern.compile("<music-detail-header[^>]*image-src=\"([^\"]+)\"");
-    private static final Pattern MUSIC_ROW_PATTERN = Pattern.compile(
-            "<(?:music-image-row|music-text-row)[^>]*primary-text=\"([^\"]+)\"[^>]*primary-href=\"([^\"]+)\"(?:[^>]*secondary-text-1=\"([^\"]+)\")?[^>]*duration=\"([^\"]+)\"(?:[^>]*image-src=\"([^\"]+)\")?");
+    private static final String CONFIG_URL = "https://music.amazon.com/config.json";
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -59,6 +46,19 @@ public class AmazonMusicApiHandler {
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
         this.objectMapper = new ObjectMapper();
+    }
+
+    private String getBaseApi() {
+        if (countryCode == null) return "https://na.mesk.skill.music.a2z.com/api/";
+        switch (countryCode.toUpperCase()) {
+            case "GB": case "DE": case "FR": case "IT": case "ES":
+                return "https://eu.mesk.skill.music.a2z.com/api/";
+            case "JP": case "AU": case "IN": case "NZ":
+                return "https://fe.mesk.skill.music.a2z.com/api/";
+            case "US": case "CA": case "MX": case "BR":
+            default:
+                return "https://na.mesk.skill.music.a2z.com/api/";
+        }
     }
 
     private JsonNode getAmazonConfig() throws IOException {
@@ -162,7 +162,7 @@ public class AmazonMusicApiHandler {
         String payloadStr = objectMapper.writeValueAsString(searchPayload);
 
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(SEARCH_API))
+                .uri(URI.create(getBaseApi() + "showSearch"))
                 .header("User-Agent", BROWSER_UA)
                 .header("Content-Type", "text/plain;charset=UTF-8")
                 .header("x-amzn-csrf", csrf.path("token").asText())
@@ -274,278 +274,217 @@ public class AmazonMusicApiHandler {
         return 0L;
     }
 
-    public Map<String, Object> fetchFromPage(String url, String targetId) throws IOException {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("User-Agent", BROWSER_UA)
-                .header("Accept", "text/html")
-                .timeout(Duration.ofSeconds(15))
-                .GET().build();
+    public Map<String, Object> fetchEntity(String url, String id, String type) throws IOException {
+        JsonNode cfg = getAmazonConfig();
+        if (cfg == null)
+            throw new IOException("Failed to retrieve Amazon Music CSRF config");
 
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200 || response.body() == null)
-                return null;
-            return parsePageContent(response.body(), url, targetId);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
+        String accessToken = cfg.path("accessToken").asText("");
+        JsonNode csrf = cfg.get("csrf");
+        String deviceId = cfg.path("deviceId").asText("13580682033287541");
+        String sessionId = cfg.path("sessionId").asText("142-4001091-4160417");
+
+        long now = System.currentTimeMillis();
+
+        Map<String, String> innerHeaders = new LinkedHashMap<>();
+        innerHeaders.put("x-amzn-authentication",
+                "{\"interface\":\"ClientAuthenticationInterface.v1_0.ClientTokenElement\",\"accessToken\":\""
+                        + accessToken + "\"}");
+        innerHeaders.put("x-amzn-device-model", "WEBPLAYER");
+        innerHeaders.put("x-amzn-device-width", "1920");
+        innerHeaders.put("x-amzn-device-height", "1080");
+        innerHeaders.put("x-amzn-device-family", "WebPlayer");
+        innerHeaders.put("x-amzn-device-id", deviceId);
+        innerHeaders.put("x-amzn-user-agent", BROWSER_UA);
+        innerHeaders.put("x-amzn-session-id", sessionId);
+        innerHeaders.put("x-amzn-request-id", UUID.randomUUID().toString());
+        innerHeaders.put("x-amzn-device-language", "en_US");
+        innerHeaders.put("x-amzn-currency-of-preference", "USD");
+        innerHeaders.put("x-amzn-os-version", "1.0");
+        innerHeaders.put("x-amzn-application-version", "1.0.9172.0");
+        innerHeaders.put("x-amzn-device-time-zone", "America/New_York");
+        innerHeaders.put("x-amzn-timestamp", String.valueOf(now));
+        innerHeaders.put("x-amzn-csrf", buildCsrfHeader(csrf));
+        innerHeaders.put("x-amzn-music-domain", "music.amazon.com");
+        innerHeaders.put("x-amzn-page-url", url);
+        innerHeaders.put("x-amzn-feature-flags", "hd-supported,uhd-supported");
+
+        String apiUrl;
+        switch (type) {
+            case "track":
+                apiUrl = getBaseApi() + "cosmicTrack/displayCatalogTrack";
+                break;
+            case "album":
+                apiUrl = getBaseApi() + "showCatalogAlbum";
+                break;
+            case "artist":
+                apiUrl = getBaseApi() + "showCatalogTracks";
+                break;
+            case "playlist":
+            default:
+                apiUrl = getBaseApi() + "showCatalogPlaylist";
+                break;
         }
-    }
 
-    public Map<String, Object> fetchFromOdesli(String url) throws IOException {
-        String cleanUrl = url.contains("?") ? url.substring(0, url.indexOf("?")) : url;
-        String apiUrl = "https://api.song.link/v1-alpha.1/links?url="
-                + URLEncoder.encode(cleanUrl, StandardCharsets.UTF_8);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("userHash", "{\"level\":\"LIBRARY_MEMBER\"}");
+        payload.put("headers", objectMapper.writeValueAsString(innerHeaders));
+
+        String payloadStr = objectMapper.writeValueAsString(payload);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(apiUrl))
                 .header("User-Agent", BROWSER_UA)
-                .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .GET().build();
+                .header("Content-Type", "text/plain;charset=UTF-8")
+                .header("x-amzn-csrf", csrf.path("token").asText())
+                .header("Origin", "https://music.amazon.com")
+                .header("Referer", "https://music.amazon.com/")
+                .timeout(Duration.ofSeconds(15))
+                .POST(HttpRequest.BodyPublishers.ofString(payloadStr))
+                .build();
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200 || response.body() == null)
+            if (response.statusCode() == 401 || response.statusCode() == 403) {
+                invalidateConfig();
                 return null;
-
-            JsonNode data = objectMapper.readTree(response.body());
-            if (data == null || !data.has("entitiesByUniqueId"))
-                return null;
-
-            String entityId = data.path("entityUniqueId").asText(null);
-            JsonNode entity = data.path("entitiesByUniqueId").path(entityId);
-
-            if (entity.isMissingNode()) {
-                Iterator<JsonNode> entities = data.path("entitiesByUniqueId").elements();
-                if (entities.hasNext())
-                    entity = entities.next();
-                else
-                    return null;
             }
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("_type", "track");
-            result.put("title", entity.path("title").asText("Unknown Track"));
-            result.put("author", entity.path("artistName").asText("Unknown Artist"));
-            result.put("uri", url);
-            result.put("artworkUrl", upgradeArtwork(entity.path("thumbnailUrl").asText(null)));
-            result.put("identifier", entity.path("id").asText(""));
-            result.put("isrc", entity.path("isrc").asText(null));
-            result.put("length", 0L);
-            return result;
+            if (response.statusCode() != 200 || response.body() == null) {
+                return null;
+            }
+
+            return parseEntity(objectMapper.readTree(response.body()), id, type);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return null;
-        } catch (Exception e) {
-            log.debug("Odesli fallback failed: {}", e.getMessage());
+        }
+    }
+
+    private Map<String, Object> parseEntity(JsonNode data, String id, String type) {
+        if (data == null || !data.has("methods") || data.get("methods").isEmpty())
             return null;
-        }
-    }
 
-    private Map<String, Object> parsePageContent(String body, String pageUrl, String targetId) {
-        try {
-            String headerArtist = extractPattern(HEADER_PRIMARY_TEXT, body);
-            String headerSecondary = extractPattern(HEADER_SECONDARY_TEXT, body);
-            String headerImage = extractPattern(HEADER_IMAGE_SRC, body);
-            String ogImage = extractPattern(OG_IMAGE_PATTERN, body);
-            String ogTitle = extractPattern(OG_TITLE_PATTERN, body);
+        JsonNode firstMethod = data.get("methods").get(0);
+        JsonNode template = firstMethod.path("template");
+        if (template.isMissingNode())
+            return null;
 
-            String artworkUrl = headerImage != null ? headerImage : ogImage;
-            String collectionName = headerArtist != null ? decodeHtml(headerArtist)
-                    : ogTitle != null ? decodeHtml(ogTitle) : "Unknown";
-            String collectionArtist = headerSecondary != null ? decodeHtml(headerSecondary) : null;
-            String collectionImage = artworkUrl;
-
-            JsonNode collection = null;
-            JsonNode trackData = null;
-
-            Matcher jsonLdMatcher = JSON_LD_PATTERN.matcher(body);
-            while (jsonLdMatcher.find()) {
-                try {
-                    String content = decodeHtml(jsonLdMatcher.group(1));
-                    JsonNode parsed = objectMapper.readTree(content);
-                    JsonNode node = parsed.isArray() && parsed.size() > 0 ? parsed.get(0) : parsed;
-
-                    String type = node.path("@type").asText("");
-                    switch (type) {
-                        case "MusicAlbum":
-                        case "MusicGroup":
-                        case "Playlist":
-                        case "MusicPlaylist":
-                            collection = node;
+        String collectionName = getText(template.path("headerText"), "Unknown Collection");
+        String collectionArtist = getText(template.path("headerPrimaryText"), null);
+        String collectionImage = upgradeArtwork(template.path("headerImage").asText(null));
+        
+        String globalIsrc = null;
+        JsonNode seoScripts = template.path("templateData").path("seoHead").path("script");
+        if (seoScripts.isArray()) {
+            for (JsonNode script : seoScripts) {
+                String innerHtml = script.path("innerHTML").asText("");
+                if (!innerHtml.isEmpty() && innerHtml.contains("\"isrcCode\"")) {
+                    try {
+                        JsonNode ldNode = objectMapper.readTree(innerHtml);
+                        if (ldNode.isArray()) ldNode = ldNode.get(0);
+                        if (ldNode.has("isrcCode")) {
+                            globalIsrc = ldNode.get("isrcCode").asText(null);
                             break;
-                        case "MusicRecording":
-                            trackData = node;
-                            break;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-
-            List<Map<String, Object>> tracks = new ArrayList<>();
-
-            if (collection != null) {
-                String artistName = extractArtistFromJsonLd(collection);
-                if (artistName != null)
-                    collectionName = artistName;
-                if (collectionArtist == null)
-                    collectionArtist = artistName;
-
-                if (collection.has("image"))
-                    collectionImage = collection.get("image").asText(collectionImage);
-
-                String albumName = collection.path("name").asText(null);
-
-                JsonNode trackList = collection.path("track");
-                if (trackList.isArray()) {
-                    for (JsonNode t : trackList) {
-                        Map<String, Object> trackInfo = parseJsonLdTrack(t, collectionName, collectionImage, albumName,
-                                pageUrl);
-                        if (trackInfo != null)
-                            tracks.add(trackInfo);
-                    }
-                }
-            }
-
-            if (tracks.isEmpty()) {
-                Matcher rowMatcher = MUSIC_ROW_PATTERN.matcher(body);
-                while (rowMatcher.find()) {
-                    Map<String, Object> trackInfo = parseHtmlRowTrack(rowMatcher, collectionName, collectionImage);
-                    if (trackInfo != null)
-                        tracks.add(trackInfo);
-                }
-            }
-
-            if (!tracks.isEmpty()) {
-                if (targetId != null) {
-                    for (Map<String, Object> t : tracks) {
-                        String id = (String) t.get("identifier");
-                        String uri = (String) t.get("uri");
-                        if (targetId.equals(id) || (uri != null && uri.contains(targetId))) {
-                            t.put("_type", "track");
-                            return t;
+                        } else if (ldNode.has("track") && ldNode.get("track").isArray()) {
+                            for (JsonNode t : ldNode.get("track")) {
+                                if (t.has("isrcCode") && t.path("url").asText("").contains(id)) {
+                                    globalIsrc = t.get("isrcCode").asText(null);
+                                    break;
+                                }
+                            }
                         }
+                    } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        List<Map<String, Object>> tracks = new ArrayList<>();
+        JsonNode widgets = template.path("widgets");
+        
+        JsonNode targetWidget = null;
+        if (widgets.isArray()) {
+            for (JsonNode w : widgets) {
+                String header = w.path("header").asText("").toLowerCase();
+                if (header.contains("tracklist") || header.contains("popular") || "track".equals(type) || targetWidget == null) {
+                    if (w.has("items")) {
+                        targetWidget = w;
+                        break;
                     }
                 }
-
-                if (pageUrl.contains("/tracks/") && targetId == null) {
-                    tracks.get(0).put("_type", "track");
-                    return tracks.get(0);
-                }
-
-                Map<String, Object> result = new LinkedHashMap<>();
-                result.put("_type", "playlist");
-                result.put("name", collectionName);
-                result.put("author", collectionArtist);
-                result.put("artworkUrl", collectionImage);
-                result.put("tracks", tracks);
-                return result;
             }
-
-            if (trackData != null)
-                return parseSingleTrackFromJsonLd(trackData, artworkUrl, pageUrl);
-
-        } catch (Exception e) {
-            log.debug("Page parse failed: {}", e.getMessage());
         }
-        return null;
-    }
 
-    private Map<String, Object> parseJsonLdTrack(JsonNode t, String fallbackArtist, String fallbackImage,
-            String albumName, String pageUrl) {
-        String tUrl = t.path("url").asText(null);
-        String id = tUrl != null ? tUrl.substring(tUrl.lastIndexOf('/') + 1) : t.path("@id").asText("unknown");
-        if (id.contains("/"))
-            id = id.substring(id.lastIndexOf('/') + 1);
+        if (targetWidget != null && targetWidget.has("items")) {
+            for (JsonNode item : targetWidget.get("items")) {
+                String trackId = null;
+                String deeplink = item.path("primaryLink").path("deeplink").asText("");
+                if (deeplink.contains("trackAsin=")) {
+                    trackId = deeplink.split("trackAsin=")[1].split("&")[0];
+                } else if (deeplink.contains("/tracks/")) {
+                    trackId = deeplink.split("/tracks/")[1].split("\\?")[0];
+                } else if (item.has("iconButton")) {
+                    String storageKey = item.path("iconButton").path("observer").path("storageKey").asText("");
+                    if (storageKey.contains(":")) {
+                        trackId = storageKey.split(":")[1];
+                    }
+                }
+                
+                if (trackId == null && "track".equals(type)) {
+                    trackId = id;
+                }
+                if (trackId == null) continue;
 
-        String artist = extractArtistFromJsonLd(t);
-        if (artist == null)
-            artist = fallbackArtist;
+                Map<String, Object> trackInfo = new LinkedHashMap<>();
+                trackInfo.put("identifier", trackId);
+                trackInfo.put("title", decodeHtml(getText(item.path("primaryText"), "Unknown Track")));
+                
+                String artist = getText(item.path("secondaryText2"), null);
+                if (artist == null) artist = getText(item.path("secondaryText1"), collectionArtist);
+                if (artist == null) artist = "Unknown Artist";
+                
+                trackInfo.put("author", decodeHtml(artist));
+                trackInfo.put("uri", "https://music.amazon.com/tracks/" + trackId);
+                trackInfo.put("artworkUrl", upgradeArtwork(item.path("image").asText(collectionImage)));
+                
+                String duration = getText(item.path("secondaryText3"), null);
+                trackInfo.put("length", duration != null ? parseColonDuration(duration) : 0L);
+                
+                String itemIsrc = globalIsrc;
+                if (itemIsrc == null && item.has("trackIsrc")) {
+                     itemIsrc = item.get("trackIsrc").asText(null);
+                }
+                trackInfo.put("isrc", itemIsrc);
 
-        Map<String, Object> trackInfo = new LinkedHashMap<>();
-        trackInfo.put("identifier", id);
-        trackInfo.put("title", t.path("name").asText("Unknown Track"));
-        trackInfo.put("author", artist);
-        trackInfo.put("albumName", albumName);
-        trackInfo.put("length", parseISO8601Duration(t.path("duration").asText(null)));
-        trackInfo.put("uri", tUrl != null ? tUrl : pageUrl);
-        trackInfo.put("artworkUrl", upgradeArtwork(fallbackImage));
-        trackInfo.put("isrc", t.path("isrcCode").asText(null));
-        return trackInfo;
-    }
+                if ("track".equals(type)) {
+                    if (trackId.equals(id)) {
+                        trackInfo.put("_type", "track");
+                        return trackInfo;
+                    }
+                } else {
+                    tracks.add(trackInfo);
+                }
+            }
+        }
+        
+        if ("track".equals(type) && !tracks.isEmpty()) {
+            Map<String, Object> t = tracks.get(0);
+            t.put("_type", "track");
+            return t;
+        }
 
-    private Map<String, Object> parseHtmlRowTrack(Matcher rowMatcher, String fallbackArtist, String fallbackImage) {
-        String tTitle = decodeHtml(rowMatcher.group(1));
-        String tHref = rowMatcher.group(2);
-        String tArtist = rowMatcher.group(3) != null ? decodeHtml(rowMatcher.group(3)) : fallbackArtist;
-        String tDuration = rowMatcher.group(4);
-        String tImage = rowMatcher.group(5) != null ? rowMatcher.group(5) : fallbackImage;
-        String tId = extractIdentifier(tHref);
-        if (tId == null)
-            tId = "am-" + tTitle.hashCode();
-
-        Map<String, Object> trackInfo = new LinkedHashMap<>();
-        trackInfo.put("identifier", tId);
-        trackInfo.put("title", tTitle);
-        trackInfo.put("author", tArtist);
-        trackInfo.put("length", tDuration != null && tDuration.contains(":") ? parseColonDuration(tDuration) : 0L);
-        trackInfo.put("uri", "https://music.amazon.com/tracks/" + tId);
-        trackInfo.put("artworkUrl", upgradeArtwork(tImage));
-        trackInfo.put("isrc", null);
-        return trackInfo;
-    }
-
-    private Map<String, Object> parseSingleTrackFromJsonLd(JsonNode trackData, String fallbackArtwork, String pageUrl) {
-        String artist = extractArtistFromJsonLd(trackData);
-        if (artist == null)
-            artist = "Unknown Artist";
-
-        String artwork = trackData.has("image") ? trackData.get("image").asText(fallbackArtwork) : fallbackArtwork;
+        if ("track".equals(type)) return null;
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("_type", "track");
-        result.put("title", trackData.path("name").asText("Unknown Track"));
-        result.put("author", artist);
-        result.put("uri", pageUrl);
-        result.put("artworkUrl", upgradeArtwork(artwork));
-        result.put("identifier", trackData.path("id").asText(pageUrl.substring(pageUrl.lastIndexOf('/') + 1)));
-        result.put("length", parseISO8601Duration(trackData.path("duration").asText(null)));
-        result.put("isrc", trackData.path("isrcCode").asText(null));
+        result.put("_type", "playlist");
+        result.put("name", collectionName);
+        result.put("author", collectionArtist);
+        result.put("artworkUrl", collectionImage);
+        result.put("tracks", tracks);
         return result;
     }
 
-    private String extractArtistFromJsonLd(JsonNode node) {
-        JsonNode byArtist = node.path("byArtist");
-        if (byArtist.isArray() && byArtist.size() > 0) {
-            StringBuilder sb = new StringBuilder();
-            for (JsonNode artist : byArtist) {
-                if (sb.length() > 0)
-                    sb.append(", ");
-                sb.append(artist.path("name").asText(""));
-            }
-            String result = sb.toString().trim();
-            return result.isEmpty() ? null : result;
-        }
-        if (byArtist.has("name")) {
-            String name = byArtist.path("name").asText(null);
-            if (name != null && !name.isEmpty())
-                return name;
-        }
-        JsonNode author = node.path("author");
-        if (author.has("name")) {
-            String name = author.path("name").asText(null);
-            if (name != null && !name.isEmpty())
-                return name;
-        }
-        return null;
-    }
-
-    private String extractPattern(Pattern pattern, String body) {
-        Matcher m = pattern.matcher(body);
-        return m.find() ? m.group(1) : null;
-    }
 
     private String upgradeArtwork(String url) {
         if (url == null)
