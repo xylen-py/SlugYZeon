@@ -43,7 +43,7 @@ public class GaanaAudioSourceManager implements AudioSourceManager, HttpConfigur
     private final int albumLoadLimit;
     private final int artistLoadLimit;
 
-    public GaanaAudioSourceManager(String[] providers, String apiUrl, int playlistLoadLimit, int albumLoadLimit,
+    public GaanaAudioSourceManager(String apiUrl, int playlistLoadLimit, int albumLoadLimit,
             int artistLoadLimit, Function<Void, AudioPlayerManager> manager) {
         this.httpInterfaceManager = HttpClientTools.createDefaultThreadLocalManager();
         this.playlistLoadLimit = playlistLoadLimit;

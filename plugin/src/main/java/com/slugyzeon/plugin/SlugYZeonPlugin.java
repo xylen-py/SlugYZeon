@@ -19,6 +19,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(SlugYZeonPlugin.class);
     private static final String[] DEFAULT_PROVIDERS = new String[] {
+            "dzisrc:%ISRC%",
             "ytsearch:\"%ISRC%\"",
             "ytmsearch:%QUERY%",
             "ytsearch:%QUERY%"
@@ -46,6 +47,17 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             SlugYZeonDeezerConfig deezerConfig) {
         log.info("Loading SlugYZeoN plugin...");
         
+        String[] lavasrcProviders = env.getProperty("plugins.lavasrc.providers", String[].class);
+        String[] slugyzeonProviders = env.getProperty("plugins.slugyzeon.providers", String[].class);
+        
+        String[] providersToUse = DEFAULT_PROVIDERS;
+        if (lavasrcProviders != null && lavasrcProviders.length > 0) {
+            providersToUse = lavasrcProviders;
+            log.info("SlugYZeoN has smartly synced mirroring providers from LavaSrc's config!");
+        } else if (slugyzeonProviders != null && slugyzeonProviders.length > 0) {
+            providersToUse = slugyzeonProviders;
+        }
+
         String youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refresh-token");
         if (youtubeRefreshToken == null) {
             youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refreshToken");
@@ -53,7 +65,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
 
         if (sourcesConfig.isGaana()) {
             this.gaana = new GaanaAudioSourceManager(
-                    DEFAULT_PROVIDERS,
                     gaanaConfig.getApiUrl(),
                     gaanaConfig.getPlaylistLoadLimit(),
                     gaanaConfig.getAlbumLoadLimit(),
@@ -62,7 +73,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         }
         if (sourcesConfig.isAmazonmusic()) {
             this.amazonMusic = new AmazonMusicAudioSourceManager(
-                    DEFAULT_PROVIDERS,
+                    providersToUse,
                     amazonMusicConfig.getCountryCode(),
                     amazonMusicConfig.getPlaylistLoadLimit(),
                     amazonMusicConfig.getAlbumLoadLimit(),
@@ -74,7 +85,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         }
         if (sourcesConfig.isPandora()) {
             this.pandora = new PandoraAudioSourceManager(
-                    DEFAULT_PROVIDERS,
+                    providersToUse,
                     pandoraConfig.getTokenApiUrl(),
                     pandoraConfig.getCsrfToken(),
                     pandoraConfig.isPreferTokenApi(),
@@ -83,7 +94,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         }
         if (sourcesConfig.isSpotify()) {
             this.spotify = new SpotifyAudioSourceManager(
-                    DEFAULT_PROVIDERS,
+                    providersToUse,
                     spotifyConfig.getCountryCode(),
                     spotifyConfig.getPlaylistLoadLimit(),
                     spotifyConfig.getAlbumLoadLimit(),
@@ -101,13 +112,13 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         }
         if (sourcesConfig.isYoutube()) {
             String[] providers = (youtubeConfig.getMirrorProviders() != null && !youtubeConfig.getMirrorProviders().isEmpty())
-                            ? youtubeConfig.getMirrorProviders().toArray(new String[0])
-                            : new String[] {
-                                    "ytsearch:%QUERY%",
-                                    "jssearch:%QUERY%",
-                                    "dzsearch:%QUERY%",
-                                    "scsearch:%QUERY%"
-                            };
+                    ? youtubeConfig.getMirrorProviders().toArray(new String[0])
+                    : new String[] {
+                            "ytsearch:%QUERY%",
+                            "jssearch:%QUERY%",
+                            "dzsearch:%QUERY%",
+                            "scsearch:%QUERY%"
+                    };
             this.youtube = new YouTubeSourceManager(
                     providers,
                     youtubeConfig.isLocalDiskCache(),
