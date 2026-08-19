@@ -18,80 +18,34 @@ import org.slf4j.LoggerFactory;
 public class YouTubeSourceManager implements AudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeSourceManager.class);
-
-    private final YouTubeProxyHandler proxyHandler;
     private final Function<Void, AudioPlayerManager> audioPlayerManager;
-    private final String[] mirrorProviders;
-    private final boolean localDiskCache;
-    private final String diskCachePath;
+    private final String apiUrl;
+    private final String masterKey;
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
-    private final java.util.concurrent.ScheduledExecutorService cleanupExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
-    private final java.util.concurrent.ExecutorService cacheExecutor = java.util.concurrent.Executors.newFixedThreadPool(3);
+    private final java.util.concurrent.ExecutorService networkExecutor = java.util.concurrent.Executors.newFixedThreadPool(10);
+    private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(10)).build();
+    private final com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager httpSourceManager = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager();
 
     public YouTubeSourceManager(
-            String[] mirrorProviders,
-            boolean localDiskCache,
-            String diskCachePath,
-            String cipherUrl,
-            String refreshToken,
+            String apiUrl,
+            String masterKey,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
-        this.proxyHandler = new YouTubeProxyHandler(cipherUrl, refreshToken);
         this.audioPlayerManager = audioPlayerManager;
-        this.mirrorProviders = mirrorProviders != null ? mirrorProviders : new String[] { "scsearch:%QUERY%" };
-        this.localDiskCache = localDiskCache;
-        this.diskCachePath = diskCachePath != null ? diskCachePath : "youtube-cache";
-
-        if (this.localDiskCache) {
-            java.io.File cacheDir = new java.io.File(this.diskCachePath);
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs();
-            }
-            startCacheCleanupTask(cacheDir);
-        }
+        this.apiUrl = apiUrl;
+        this.masterKey = masterKey;
     }
 
-    private void startCacheCleanupTask(java.io.File cacheDir) {
-        cleanupExecutor.scheduleAtFixedRate(() -> {
-            try {
-                long expirationTime = System.currentTimeMillis() - java.time.Duration.ofDays(7).toMillis();
-                java.io.File[] files = cacheDir.listFiles();
-                int deletedCount = 0;
-                if (files != null) {
-                    for (java.io.File file : files) {
-                        if (file.isFile() && file.lastModified() < expirationTime) {
-                            if (file.delete()) {
-                                deletedCount++;
-                            }
-                        }
-                    }
-                }
-                if (deletedCount > 0) {
-                    log.info("Cleared {} tracks from local cache, inactive from last 7 days.", deletedCount);
-                }
-            } catch (Exception ignored) {
-            }
-        }, 1, 24, java.util.concurrent.TimeUnit.HOURS);
+    public String getApiUrl() {
+        return apiUrl;
     }
 
-    public boolean isLocalDiskCache() {
-        return localDiskCache;
-    }
-
-    public String getDiskCachePath() {
-        return diskCachePath;
-    }
-
-    public YouTubeProxyHandler getProxyHandler() {
-        return proxyHandler;
+    public String getMasterKey() {
+        return masterKey;
     }
 
     public Function<Void, AudioPlayerManager> getAudioPlayerManager() {
         return audioPlayerManager;
-    }
-
-    public String[] getMirrorProviders() {
-        return mirrorProviders;
     }
 
     public boolean isAttached() {
@@ -162,14 +116,24 @@ public class YouTubeSourceManager implements AudioSourceManager {
         return "youtube";
     }
 
-    public java.util.concurrent.ExecutorService getCacheExecutor() {
-        return cacheExecutor;
+    public java.util.concurrent.ExecutorService getNetworkExecutor() {
+        return networkExecutor;
+    }
+
+    public java.net.http.HttpClient getHttpClient() {
+        return httpClient;
     }
 
     @Override
     public AudioItem loadItem(AudioPlayerManager manager, AudioReference reference) {
         if (originalYouTubeSource == null)
             return null;
+
+        String videoId = extractVideoId(reference.identifier);
+        if (videoId != null) {
+            AudioTrack cdnTrack = checkCdnForTrack(videoId);
+            if (cdnTrack != null) return cdnTrack;
+        }
 
         AudioItem result = null;
         Exception loadError = null;
@@ -198,246 +162,51 @@ public class YouTubeSourceManager implements AudioSourceManager {
             return result;
         }
 
-        if (loadError != null && isRetriableError(loadError)) {
-            AudioItem fallback = fallbackLoadItem(reference);
-            if (fallback != null) {
-                if (fallback instanceof AudioTrack) {
-                    return enrichTrack((AudioTrack) fallback, reference);
-                }
-                return fallback;
-            }
-        }
-
-        String videoId = extractVideoId(reference.identifier);
-        if (videoId != null) {
-            AudioTrack oembedTrack = buildOembedTrack(videoId);
-            if (oembedTrack != null) return oembedTrack;
-        }
-
         return null;
     }
 
     private AudioItem enrichTrack(AudioTrack track, AudioReference reference) {
-        String title = track.getInfo().title;
-        String author = track.getInfo().author;
-        if (hasBadMetadata(title) || hasBadMetadata(author)) {
-            AudioTrack enriched = enrichWithOembed(track, reference);
-            if (enriched != null) return enriched;
-        }
         return wrapTrack(track);
     }
 
-    private static boolean hasBadMetadata(String value) {
-        return value == null || value.trim().isEmpty() || value.equalsIgnoreCase("unknown") 
-            || value.equalsIgnoreCase("unknown title") || value.equalsIgnoreCase("unknown artist");
-    }
-
-    private AudioTrack enrichWithOembed(AudioTrack original, AudioReference reference) {
-        try {
-            String videoId = extractVideoId(reference.identifier);
-            if (videoId == null) videoId = original.getInfo().identifier;
-            if (videoId == null) return null;
-
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=" + java.net.URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8") + "&format=json"))
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                .timeout(java.time.Duration.ofSeconds(5))
-                .GET().build();
-            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(5)).build()
-                .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-            if (res.statusCode() == 200 && res.body() != null) {
-                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
-                String title = json.path("title").asText(null);
-                String author = json.path("author_name").asText(null);
-                if (title != null && !title.isEmpty() && author != null && !author.isEmpty()) {
-                    String thumb = json.path("thumbnail_url").asText("https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg");
-                    AudioTrackInfo newInfo = new AudioTrackInfo(
-                        title, author, original.getDuration(), original.getIdentifier(),
-                        original.getInfo().isStream, original.getInfo().uri, thumb, null);
-                    return new YouTubeTrack(newInfo, videoId, original, this);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
-    private AudioTrack buildOembedTrack(String videoId) {
+    AudioTrack checkCdnForTrack(String videoId) {
         try {
             java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://www.youtube.com/oembed?url=" + java.net.URLEncoder.encode("https://www.youtube.com/watch?v=" + videoId, "UTF-8") + "&format=json"))
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
-                .timeout(java.time.Duration.ofSeconds(5))
+                .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
+                .header("User-Agent", "SlugYZeon-Node")
+                .timeout(java.time.Duration.ofSeconds(3))
                 .GET().build();
-            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(5)).build()
-                .send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                
             if (res.statusCode() == 200 && res.body() != null) {
                 com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
-                String title = json.path("title").asText(null);
-                String author = json.path("author_name").asText(null);
-                if (title != null && !title.isEmpty()) {
-                    String thumb = json.path("thumbnail_url").asText("https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg");
-                    AudioTrackInfo info = new AudioTrackInfo(
-                        title, author != null ? author : "Unknown", Long.MAX_VALUE, videoId,
-                        false, "https://www.youtube.com/watch?v=" + videoId, thumb, null);
-                    return new YouTubeTrack(info, videoId, null, this);
-                }
+                String title = json.path("title").asText("Unknown");
+                String author = json.path("author").asText("Unknown");
+                long length = json.path("length").asLong(Long.MAX_VALUE);
+                String thumb = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+                
+                AudioTrackInfo info = new AudioTrackInfo(
+                    title, author, length, videoId,
+                    false, apiUrl + "/api/v1/stream/" + videoId, thumb, null);
+                
+                com.sedmelluq.discord.lavaplayer.track.AudioTrack httpTrack = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioTrack(info, httpSourceManager);
+                
+                return new YouTubeTrack(info, videoId, httpTrack, this);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.error("Failed to fetch metadata from CDN for {}", videoId, e);
         }
         return null;
-    }
-
-    static boolean isRetriableError(Throwable e) {
-        if (e == null)
-            return false;
-
-        String className = e.getClass().getSimpleName().toLowerCase();
-        if (className.contains("allclientsfailed"))
-            return true;
-        if (className.contains("friendlyexception")) {
-            try {
-                com.sedmelluq.discord.lavaplayer.tools.FriendlyException fe = (com.sedmelluq.discord.lavaplayer.tools.FriendlyException) e;
-                if (fe.severity == com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.COMMON
-                        || fe.severity == com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.SUSPICIOUS) {
-                    String msg = fe.getMessage() != null ? fe.getMessage().toLowerCase() : "";
-                    if (msg.contains("something broke") || msg.contains("something went wrong"))
-                        return true;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-        if (msg.contains("sign in") || msg.contains("login") || msg.contains("requires login")
-                || msg.contains("bot") || msg.contains("confirm") || msg.contains("verify")
-                || msg.contains("403") || msg.contains("400") || msg.contains("401")
-                || msg.contains("age") || msg.contains("restricted") || msg.contains("unavailable")
-                || msg.contains("country") || msg.contains("blocked") || msg.contains("copyright")
-                || msg.contains("removed") || msg.contains("private") || msg.contains("premium")
-                || msg.contains("members only") || msg.contains("requires payment")
-                || msg.contains("all clients failed") || msg.contains("configuration error")
-                || msg.contains("no supported audio") || msg.contains("playback on other")
-                || msg.contains("invalid status") || msg.contains("not success status")
-                || msg.contains("playability")) {
-            return true;
-        }
-
-        return isRetriableError(e.getCause());
-    }
-
-
-    private AudioItem fallbackLoadItem(AudioReference reference) {
-        String id = reference.identifier;
-        if (id == null)
-            return null;
-
-        if (id.startsWith("ytsearch:") || id.startsWith("ytmsearch:")) {
-            String query = id.substring(id.indexOf(':') + 1);
-            List<YouTubeProxyHandler.VideoInfo> results = proxyHandler.search(query, id.startsWith("ytm"));
-            if (results != null && !results.isEmpty()) {
-                List<AudioTrack> tracks = new ArrayList<>();
-                for (YouTubeProxyHandler.VideoInfo info : results) {
-                    tracks.add(buildProxyTrack(info));
-                }
-                return new BasicAudioPlaylist("Search results for: " + query, tracks, null, true);
-            }
-        } else {
-            String videoId = extractVideoId(id);
-            if (videoId != null) {
-                YouTubeProxyHandler.VideoInfo info = proxyHandler.getVideoInfo(videoId);
-
-                if (info == null) {
-                    List<YouTubeProxyHandler.VideoInfo> fallbackSearchResults = proxyHandler.search(videoId, false);
-                    if (fallbackSearchResults != null) {
-                        for (YouTubeProxyHandler.VideoInfo result : fallbackSearchResults) {
-                            if (videoId.equals(result.videoId)) {
-                                info = result;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (info != null) {
-                    return buildProxyTrack(info);
-                }
-            }
-        }
-        return null;
-    }
-
-    private AudioTrack buildProxyTrack(YouTubeProxyHandler.VideoInfo info) {
-        AudioTrackInfo trackInfo = new AudioTrackInfo(
-                info.title, info.author, info.durationMs, info.videoId,
-                info.isStream, info.uri, info.thumbnail, info.isrc);
-        return new YouTubeTrack(trackInfo, info.videoId, null, this);
     }
 
     static String extractVideoId(String url) {
-        if (url == null || url.isEmpty())
-            return null;
-        url = url.trim();
-
-        if (url.length() == 11 && !url.contains("/") && !url.contains(".") && !url.contains(":")) {
-            return url;
+        if (url == null || (url = url.trim()).isEmpty()) return null;
+        if (url.length() == 11 && !url.matches(".*[/.#?&].*")) return url;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|/embed/|/v/)([^&#?/]+)").matcher(url);
+        if (m.find()) {
+            String id = m.group(1);
+            return id.length() >= 11 ? id.substring(0, 11) : id;
         }
-
-        try {
-            if (url.contains("youtu.be/")) {
-                int start = url.indexOf("youtu.be/") + 9;
-                String rest = url.substring(start);
-                int end = rest.indexOf('?');
-                if (end == -1)
-                    end = rest.indexOf('&');
-                if (end == -1)
-                    end = rest.indexOf('/');
-                if (end == -1)
-                    end = rest.length();
-                String id = rest.substring(0, end);
-                return id.length() >= 11 ? id.substring(0, 11) : id;
-            }
-
-            if (url.contains("v=")) {
-                int start = url.indexOf("v=") + 2;
-                String rest = url.substring(start);
-                int end = rest.indexOf('&');
-                if (end == -1)
-                    end = rest.indexOf('#');
-                if (end == -1)
-                    end = rest.length();
-                String id = rest.substring(0, end);
-                return id.length() >= 11 ? id.substring(0, 11) : id;
-            }
-
-            if (url.contains("/embed/")) {
-                int start = url.indexOf("/embed/") + 7;
-                String rest = url.substring(start);
-                int end = rest.indexOf('?');
-                if (end == -1)
-                    end = rest.indexOf('/');
-                if (end == -1)
-                    end = rest.length();
-                String id = rest.substring(0, end);
-                return id.length() >= 11 ? id.substring(0, 11) : id;
-            }
-
-            if (url.contains("/v/")) {
-                int start = url.indexOf("/v/") + 3;
-                String rest = url.substring(start);
-                int end = rest.indexOf('?');
-                if (end == -1)
-                    end = rest.indexOf('/');
-                if (end == -1)
-                    end = rest.length();
-                String id = rest.substring(0, end);
-                return id.length() >= 11 ? id.substring(0, 11) : id;
-            }
-        } catch (Exception ignored) {
-        }
-
         return url;
     }
 
@@ -509,7 +278,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
     public void shutdown() {
         if (originalYouTubeSource != null)
             originalYouTubeSource.shutdown();
-        cleanupExecutor.shutdownNow();
-        cacheExecutor.shutdownNow();
+        networkExecutor.shutdownNow();
     }
 }

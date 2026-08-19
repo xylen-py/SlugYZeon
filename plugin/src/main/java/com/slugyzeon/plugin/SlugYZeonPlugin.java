@@ -58,11 +58,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             providersToUse = slugyzeonProviders;
         }
 
-        String youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refresh-token");
-        if (youtubeRefreshToken == null) {
-            youtubeRefreshToken = env.getProperty("plugins.youtube.oauth.refreshToken");
-        }
-
         if (sourcesConfig.isGaana()) {
             this.gaana = new GaanaAudioSourceManager(
                     gaanaConfig.getApiUrl(),
@@ -111,21 +106,10 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     deezerConfig.getQuality());
         }
         if (sourcesConfig.isYoutube()) {
-            String[] providers = (youtubeConfig.getMirrorProviders() != null && !youtubeConfig.getMirrorProviders().isEmpty())
-                    ? youtubeConfig.getMirrorProviders().toArray(new String[0])
-                    : new String[] {
-                            "ytsearch:%QUERY%",
-                            "jssearch:%QUERY%",
-                            "dzsearch:%QUERY%",
-                            "scsearch:%QUERY%"
-                    };
-            this.youtube = new YouTubeSourceManager(
-                    providers,
-                    youtubeConfig.isLocalDiskCache(),
-                    youtubeConfig.getDiskCachePath(),
-                    youtubeConfig.getCipherUrl(),
-                    youtubeRefreshToken,
-                    unused -> manager);
+            if (youtubeConfig.getApiUrl() != null && !youtubeConfig.getApiUrl().trim().isEmpty() &&
+                youtubeConfig.getMasterKey() != null && !youtubeConfig.getMasterKey().trim().isEmpty()) {
+                this.youtube = new YouTubeSourceManager(youtubeConfig.getApiUrl(), youtubeConfig.getMasterKey(), unused -> manager);
+            }
         }
     }
 

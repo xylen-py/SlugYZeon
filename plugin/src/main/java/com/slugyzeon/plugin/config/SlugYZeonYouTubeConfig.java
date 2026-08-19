@@ -9,40 +9,22 @@ import java.util.List;
 @Component
 public class SlugYZeonYouTubeConfig {
 
-    private List<String> mirrorProviders;
-    private boolean localDiskCache = false;
-    private String diskCachePath = "youtube-cache";
-    private String cipherUrl = "https://cipher.kikkia.dev";
+    private String apiUrl;
+    private String masterKey;
 
-    public String getCipherUrl() {
-        return cipherUrl;
+    public String getApiUrl() {
+        return apiUrl;
     }
 
-    public void setCipherUrl(String cipherUrl) {
-        this.cipherUrl = cipherUrl;
+    public void setApiUrl(String apiUrl) {
+        this.apiUrl = apiUrl;
     }
 
-    public boolean isLocalDiskCache() {
-        return localDiskCache;
+    public String getMasterKey() {
+        return masterKey;
     }
 
-    public void setLocalDiskCache(boolean localDiskCache) {
-        this.localDiskCache = localDiskCache;
-    }
-
-    public String getDiskCachePath() {
-        return diskCachePath;
-    }
-
-    public void setDiskCachePath(String diskCachePath) {
-        this.diskCachePath = diskCachePath;
-    }
-
-    public List<String> getMirrorProviders() {
-        return mirrorProviders;
-    }
-
-    public void setMirrorProviders(List<String> mirrorProviders) {
-        this.mirrorProviders = mirrorProviders;
+    public void setMasterKey(String masterKey) {
+        this.masterKey = masterKey;
     }
 }

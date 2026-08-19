@@ -217,17 +217,23 @@ GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
 
 ## Credits
 
-- **[xylen-py](https://github.com/xylen-py)** — For both plugin APIs & sources for Deezer & Gaana.
+- **[xylen-py](https://github.com/xylen-py)** — For plugin APIs & sources for Deezer, Gaana, & Amazon Music.
 - **[saraansx](https://github.com/saraansx)** — For help with Spotify integration.
 - **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — For providing the official Lavalink plugin template.
 - **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — For the foundational mirroring architecture and code structure.
 
 ---
 
-## YouTube Testing (Experimental)
+## YouTube CDN Integration
 
-> [!WARNING]
-> The YouTube fallback scraper module is currently in active testing and may experience instability due to frequent YouTube bot-protection changes. It is provided here as an experimental, opt-in configuration for those who want to test the direct watch page scraper and innertube fallback.
+> [!TIP]
+> SlugYZeon now supports a high-performance, globally distributed YouTube CDN. Instead of downloading directly from YouTube and hitting rate-limits, you can host the `slugyzeon-ytcdn` Golang server. The plugin will automatically stream from your private CDN, and silently upload new tracks in the background!
+
+### Setup Guide
+
+1. **Host the Go CDN:** Clone and run the `slugyzeon-ytcdn` Golang server on a fast VPS or local machine.
+2. **Configure `.env`:** Inside your Go server, generate a highly secure `MASTER_KEY` and set it in your `.env` file.
+3. **Link to Lavalink:** Update your Lavalink `application.yml` with the CDN URL and Master Key exactly as shown below:
 
 ```yaml
 plugins:
@@ -235,12 +241,8 @@ plugins:
     sources:
       youtube: true
     youtube:
-      localDiskCache: true # Automatically save streaming audio to disk to permanently bypass YouTube rate-limits
-      diskCachePath: "youtube-cache" # Directory to save cached audio tracks
-      cipherUrl: "https://cipher.kikkia.dev" # External API to decrypt stream signatures for WEB clients
-      mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
-        - "ytmsearch:%QUERY%"
-        - "scsearch:%QUERY%"
+      apiUrl: "http://localhost:3000" # The base URL of your SlugYZeon-YTCDN Golang server
+      masterKey: "SUPER_SECRET_MASTER_KEY_CHANGE_ME" # The secret master key configured in your CDN's .env file
 ```
 
 ---
