@@ -48,6 +48,7 @@ public class InstagramApiHandler {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NORMAL)
+                .cookieHandler(new java.net.CookieManager())
                 .build();
         this.objectMapper = new ObjectMapper();
     }
@@ -64,7 +65,13 @@ public class InstagramApiHandler {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://www.instagram.com/"))
                     .header("User-Agent", BROWSER_UA)
-                    .header("Accept", "text/html")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.5")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "none")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("Upgrade-Insecure-Requests", "1")
                     .timeout(Duration.ofSeconds(10))
                     .GET().build();
 
@@ -172,7 +179,6 @@ public class InstagramApiHandler {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200 || response.body() == null) {
-                log.debug("GraphQL request failed with status {}", response.statusCode());
                 return null;
             }
 
@@ -247,7 +253,6 @@ public class InstagramApiHandler {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200 || response.body() == null) {
-                log.debug("Audio API request failed with status {}", response.statusCode());
                 return null;
             }
 
@@ -385,7 +390,6 @@ public class InstagramApiHandler {
             }
             return shortcode.toString();
         } catch (NumberFormatException e) {
-            log.debug("Could not convert mediaId '{}' to shortcode", mediaId);
             return null;
         }
     }

@@ -19,8 +19,6 @@ import java.util.regex.Pattern;
 
 public class InstagramAudioTrack extends DelegatedAudioTrack {
 
-    private static final Logger log = LoggerFactory.getLogger(InstagramAudioTrack.class);
-
     private static final Pattern POST_PATTERN = Pattern.compile("instagram\\.com/p/([\\w-]+)");
     private static final Pattern REEL_PATTERN = Pattern.compile("instagram\\.com/(?:reels?|reel)/([\\w-]+)");
     private static final Pattern AUDIO_PATTERN = Pattern.compile("instagram\\.com/reels/audio/(\\d+)");
@@ -89,7 +87,6 @@ public class InstagramAudioTrack extends DelegatedAudioTrack {
 
             return null;
         } catch (Exception e) {
-            log.debug("Failed to refetch Instagram stream URL: {}", e.getMessage());
             return null;
         }
     }
