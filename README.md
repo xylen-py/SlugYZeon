@@ -102,7 +102,7 @@ plugins:
       artistLoadLimit: 50
       searchLimit: 25
     amazonmusic:
-      countryCode: "IN" # Region lock code for Amazon Music
+      apiUrl: "https://amazon-plugin-api.vercel.app/api" # The API proxy required to resolve Amazon Music endpoints
       playlistLoadLimit: 50
       albumLoadLimit: 50
       artistLoadLimit: 50

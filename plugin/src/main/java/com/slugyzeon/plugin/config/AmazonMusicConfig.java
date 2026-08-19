@@ -7,17 +7,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class AmazonMusicConfig {
 
-    private String countryCode = "IN";
+    private String apiUrl = "https://amazon-plugin-api.vercel.app/api";
     private int playlistLoadLimit = 50;
     private int albumLoadLimit = 50;
     private int artistLoadLimit = 50;
 
-    public String getCountryCode() {
-        return countryCode;
+    public String getApiUrl() {
+        return apiUrl;
     }
 
-    public void setCountryCode(String countryCode) {
-        this.countryCode = countryCode;
+    public void setApiUrl(String apiUrl) {
+        this.apiUrl = apiUrl;
     }
 
     public int getPlaylistLoadLimit() {

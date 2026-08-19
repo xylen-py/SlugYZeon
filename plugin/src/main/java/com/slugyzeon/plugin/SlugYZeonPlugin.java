@@ -74,7 +74,7 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (sourcesConfig.isAmazonmusic()) {
             this.amazonMusic = new AmazonMusicAudioSourceManager(
                     providersToUse,
-                    amazonMusicConfig.getCountryCode(),
+                    amazonMusicConfig.getApiUrl(),
                     amazonMusicConfig.getPlaylistLoadLimit(),
                     amazonMusicConfig.getAlbumLoadLimit(),
                     amazonMusicConfig.getArtistLoadLimit(),

@@ -1,5 +1,6 @@
 package com.slugyzeon.plugin.amazonmusic;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.*;
@@ -33,20 +34,18 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
             Pattern.CASE_INSENSITIVE);
 
     private final AmazonMusicApiHandler api;
-    private final String countryCode;
     private final int playlistLoadLimit;
     private final int albumLoadLimit;
     private final int artistLoadLimit;
 
-    public AmazonMusicAudioSourceManager(String[] providers, String countryCode,
+    public AmazonMusicAudioSourceManager(String[] providers, String apiUrl,
             int playlistLoadLimit, int albumLoadLimit, int artistLoadLimit,
             Function<Void, AudioPlayerManager> manager) {
         super(manager, new DefaultMirroringAudioTrackResolver(providers));
-        this.countryCode = countryCode;
         this.playlistLoadLimit = playlistLoadLimit;
         this.albumLoadLimit = albumLoadLimit;
         this.artistLoadLimit = artistLoadLimit;
-        this.api = new AmazonMusicApiHandler(countryCode);
+        this.api = new AmazonMusicApiHandler(apiUrl);
     }
 
     @Override
@@ -112,75 +111,69 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
         if (query.isEmpty())
             return AudioReference.NO_TRACK;
 
-        List<Map<String, Object>> results = api.search(query);
-        if (results == null || results.isEmpty())
+        JsonNode data = api.searchSongs(query, 25);
+        if (data == null || !data.isArray() || data.isEmpty())
             return AudioReference.NO_TRACK;
 
         List<AudioTrack> tracks = new ArrayList<>();
-        for (Map<String, Object> result : results) {
-            AudioTrack track = mapTrack(result);
+        for (JsonNode item : data) {
+            AudioTrack track = mapTrack(item);
             if (track != null)
                 tracks.add(track);
         }
 
         if (tracks.isEmpty())
             return AudioReference.NO_TRACK;
-
-        AudioTrack first = tracks.get(0);
-        if (first.getDuration() == 0 && first.getInfo().uri != null) {
-            try {
-                String trackId = first.getInfo().identifier;
-                AudioItem resolved = resolveTrack(first.getInfo().uri, trackId);
-                if (resolved instanceof AudioTrack) {
-                    tracks.set(0, (AudioTrack) resolved);
-                }
-            } catch (Exception e) {
-            }
-        }
 
         return new BasicAudioPlaylist("Amazon Music Search: " + query, tracks, null, true);
     }
 
     public AudioItem resolveTrack(String url, String id) throws IOException {
-        Map<String, Object> data = api.fetchEntity(url, id, "track");
+        JsonNode data = api.getSong(id);
+        if (data == null)
+            return AudioReference.NO_TRACK;
 
-        if (data != null && "track".equals(data.get("_type")))
-            return mapTrack(data);
-
-        return AudioReference.NO_TRACK;
+        AudioTrack track = mapTrack(data);
+        return track != null ? track : AudioReference.NO_TRACK;
     }
 
-    @SuppressWarnings("unchecked")
     public AudioItem resolveCollection(String url, String type, String id) throws IOException {
-        Map<String, Object> data = api.fetchEntity(url, id, type);
-
-        if (data == null || !"playlist".equals(data.get("_type")))
-            return AudioReference.NO_TRACK;
-
-        String name = (String) data.getOrDefault("name", "Amazon Music " + type);
-        List<Map<String, Object>> trackMaps = (List<Map<String, Object>>) data.get("tracks");
-
-        if (trackMaps == null || trackMaps.isEmpty())
-            return AudioReference.NO_TRACK;
-
-        int limit;
+        JsonNode data = null;
         switch (type) {
             case "album":
-                limit = albumLoadLimit;
+                data = api.getAlbum(id);
                 break;
             case "artist":
-                limit = artistLoadLimit;
+                data = api.getArtist(id);
                 break;
-            default:
-                limit = playlistLoadLimit;
+            case "playlist":
+                data = api.getPlaylist(id);
+                break;
+            case "user-playlist":
+                data = api.getCommunityPlaylist(id);
                 break;
         }
 
+        if (data == null)
+            return AudioReference.NO_TRACK;
+
+        String name = data.has("name") ? data.get("name").asText() : data.has("title") ? data.get("title").asText() : "Amazon Music " + type;
+        JsonNode tracksNode = data.has("songs") ? data.get("songs") : data.has("tracks") ? data.get("tracks") : null;
+
+        if (tracksNode == null || !tracksNode.isArray() || tracksNode.isEmpty())
+            return AudioReference.NO_TRACK;
+
+        int limit = switch (type) {
+            case "album" -> albumLoadLimit;
+            case "artist" -> artistLoadLimit;
+            default -> playlistLoadLimit;
+        };
+
         List<AudioTrack> tracks = new ArrayList<>();
-        for (Map<String, Object> trackMap : trackMaps) {
+        for (JsonNode item : tracksNode) {
             if (tracks.size() >= limit)
                 break;
-            AudioTrack track = mapTrack(trackMap);
+            AudioTrack track = mapTrack(item);
             if (track != null)
                 tracks.add(track);
         }
@@ -188,20 +181,15 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
         if (tracks.isEmpty())
             return AudioReference.NO_TRACK;
 
-        ExtendedAudioPlaylist.Type playlistType;
-        switch (type) {
-            case "album":
-                playlistType = ExtendedAudioPlaylist.Type.ALBUM;
-                break;
-            case "artist":
-                playlistType = ExtendedAudioPlaylist.Type.ARTIST;
-                break;
-            default:
-                playlistType = ExtendedAudioPlaylist.Type.PLAYLIST;
-                break;
-        }
+        ExtendedAudioPlaylist.Type playlistType = switch (type) {
+            case "album" -> ExtendedAudioPlaylist.Type.ALBUM;
+            case "artist" -> ExtendedAudioPlaylist.Type.ARTIST;
+            default -> ExtendedAudioPlaylist.Type.PLAYLIST;
+        };
 
-        String artworkUrl = tracks.get(0).getInfo().artworkUrl;
+        String artworkUrl = data.has("image") ? data.get("image").asText() : data.has("artworkUrl") ? data.get("artworkUrl").asText() : tracks.get(0).getInfo().artworkUrl;
+        String author = data.has("artist") && data.get("artist").has("name") ? data.get("artist").get("name").asText() : data.has("author") ? data.get("author").asText() : null;
+        int totalTracks = data.has("totalSongs") ? data.get("totalSongs").asInt() : tracks.size();
 
         return new AmazonMusicAudioPlaylist(
                 name,
@@ -209,24 +197,38 @@ public class AmazonMusicAudioSourceManager extends MirroringAudioSourceManager {
                 playlistType,
                 url,
                 artworkUrl,
-                null,
-                tracks.size());
+                author,
+                totalTracks);
     }
 
-    private AudioTrack mapTrack(Map<String, Object> data) {
+    private AudioTrack mapTrack(JsonNode data) {
         if (data == null)
             return null;
 
-        String title = (String) data.getOrDefault("title", "Unknown Track");
-        String author = (String) data.getOrDefault("author", "Unknown Artist");
-        String identifier = (String) data.getOrDefault("identifier", "");
-        String uri = (String) data.get("uri");
-        String artworkUrl = (String) data.get("artworkUrl");
-        String isrc = (String) data.get("isrc");
-        long length = data.containsKey("length") ? ((Number) data.get("length")).longValue() : 0;
+        String title = data.has("name") ? data.get("name").asText() : data.has("title") ? data.get("title").asText() : "Unknown Track";
+        
+        String author = "Unknown Artist";
+        String artistUrl = null;
+        if (data.has("artist") && data.get("artist").isObject()) {
+            author = data.get("artist").has("name") ? data.get("artist").get("name").asText() : author;
+            artistUrl = data.get("artist").has("url") ? data.get("artist").get("url").asText() : null;
+        }
+
+        String identifier = data.has("id") ? data.get("id").asText() : "";
+        String uri = data.has("url") ? data.get("url").asText() : "https://music.amazon.com/tracks/" + identifier;
+        String artworkUrl = data.has("image") ? data.get("image").asText() : null;
+        String isrc = data.has("isrc") && !data.get("isrc").isNull() ? data.get("isrc").asText() : null;
+        long length = data.has("duration") ? data.get("duration").asLong() * 1000 : 0;
+        
+        String albumName = null;
+        String albumUrl = null;
+        if (data.has("album") && data.get("album").isObject()) {
+            albumName = data.get("album").has("name") ? data.get("album").get("name").asText() : null;
+            albumUrl = data.get("album").has("url") ? data.get("album").get("url").asText() : null;
+        }
 
         AudioTrackInfo info = new AudioTrackInfo(title, author, length, identifier, false, uri, artworkUrl, isrc);
-        return new AmazonMusicAudioTrack(info, null, null, null, null, null, false, this);
+        return new AmazonMusicAudioTrack(info, albumName, albumUrl, artistUrl, null, null, false, this);
     }
 
     public AmazonMusicApiHandler getApiHandler() {
