@@ -189,7 +189,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
                     title, author, length, videoId,
                     false, apiUrl + "/api/v1/stream/" + videoId, thumb, null);
                 
-                com.sedmelluq.discord.lavaplayer.track.AudioTrack httpTrack = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioTrack(info, httpSourceManager);
+                com.sedmelluq.discord.lavaplayer.track.AudioTrack httpTrack = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioTrack(info, new com.sedmelluq.discord.lavaplayer.container.MediaContainerDescriptor(null, null), httpSourceManager);
                 
                 return new YouTubeTrack(info, videoId, httpTrack, this);
             }
