@@ -23,10 +23,9 @@
 
 | Source         | Features                                         | Playback                     |
 |----------------|--------------------------------------------------|------------------------------|
-| Spotify        | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
-| YouTube        | enhances all youtube playback                    | Direct Scraper Fallback      |
-| Gaana          | songs, albums, playlists, artists                | Native Stream (HLS)          |
 | Amazon Music   | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
+| Spotify        | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
+| Gaana          | songs, albums, playlists, artists                | Native Stream (HLS)          |
 | Instagram      | posts, reels, audio pages                        | Native Stream (MP4 CDN)      |
 | Pandora        | tracks, albums, playlists, artists, stations     | [Mirror](#what-is-mirroring) |
 | Deezer         | tracks, albums, playlists, artists               | Native Stream (Decrypted)    |
@@ -35,8 +34,6 @@
 
 - **Mirror System** — ISRC-first resolution with automatic query fallback for mirrored sources.
 - **Spotify GraphQL API** — Zero-downtime hash rotation, asynchronous infinite pagination, bypasses rate limits.
-- **YouTube Enhancer** — Direct watch page scraping, innertube fallback, bypassing age/consent walls.
-- **YouTube Local Cache** — Built-in SSD/HDD caching for all mirrored tracks to bypass ratelimits and save bandwidth.
 - **Gaana Native Streaming** — Fully persistent HLS chunk buffering directly from Akamai CDN.
 - **Instagram Native Playback** — Auto-scraped tokens with token rotation, supports posts, reels, audio pages.
 - **Deezer Native Streaming** — Direct CDN playback with on-the-fly blowfish decryption.
@@ -80,7 +77,6 @@ plugins:
       instagram: false
       pandora: false
       spotify: false
-      youtube: false
       deezer: false
     spotify:
       countryCode: "US" # the country code for filtering artist top tracks
@@ -88,13 +84,6 @@ plugins:
       albumLoadLimit: 6 # The number of pages at 50 tracks each
       resolveArtistsInSearch: true # Whether to resolve artists in track search results
       localFiles: false # Enable local files support
-    youtube:
-      localDiskCache: true # Automatically save streaming audio to disk to permanently bypass YouTube rate-limits
-      diskCachePath: "youtube-cache" # Directory to save cached audio tracks
-      cipherUrl: "https://cipher.kikkia.dev" # External API to decrypt stream signatures for WEB clients
-      mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
-        - "ytmsearch:%QUERY%"
-        - "scsearch:%QUERY%"
     gaana:
       apiUrl: "https://gaana-plugin-api.vercel.app/api" # The API proxy required to resolve Gaana HLS manifests
       playlistLoadLimit: 50
@@ -138,21 +127,6 @@ GET /v4/loadtracks?identifier=https://open.spotify.com/track/7qiZfU4dY1lWllzX7mP
 GET /v4/loadtracks?identifier=https://open.spotify.com/album/1ATL5GLyefJaxhQzSPVrLX
 GET /v4/loadtracks?identifier=https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
 GET /v4/loadtracks?identifier=https://open.spotify.com/artist/1Xyo4u8uXC1ZmMpatF05PJ
-```
-
-### YouTube Fallback
-
-```bash
-# search (replaces ytsearch when youtube enabled)
-GET /v4/loadtracks?identifier=ytsearch:brown munde
-
-# youtube music search
-GET /v4/loadtracks?identifier=ytmsearch:brown munde
-
-# url support
-GET /v4/loadtracks?identifier=https://www.youtube.com/watch?v=FM2ykrYbzqg
-GET /v4/loadtracks?identifier=https://www.youtube.com/shorts/ABC123
-GET /v4/loadtracks?identifier=https://youtu.be/FM2ykrYbzqg
 ```
 
 ### Gaana
@@ -247,7 +221,28 @@ GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
 - **[saraansx](https://github.com/saraansx)** — For help with Spotify integration.
 - **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — For providing the official Lavalink plugin template.
 - **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — For the foundational mirroring architecture and code structure.
-- **[bongo-devs / jiosaavn-plugin](https://github.com/bongo-devs/jiosaavn-plugin)** — For the architecture of external proxy API sources.
+- **bongo-devs / jiosaavn-plugin** — For the architecture of external proxy API sources.
+
+---
+
+## YouTube Testing (Experimental)
+
+> [!WARNING]
+> The YouTube fallback scraper module is currently in active testing and may experience instability due to frequent YouTube bot-protection changes. It is provided here as an experimental, opt-in configuration for those who want to test the direct watch page scraper and innertube fallback.
+
+```yaml
+plugins:
+  slugyzeon:
+    sources:
+      youtube: true
+    youtube:
+      localDiskCache: true # Automatically save streaming audio to disk to permanently bypass YouTube rate-limits
+      diskCachePath: "youtube-cache" # Directory to save cached audio tracks
+      cipherUrl: "https://cipher.kikkia.dev" # External API to decrypt stream signatures for WEB clients
+      mirrorProviders: # Fallback sources to search when the official youtube-plugin fails (e.g. age-restriction)
+        - "ytmsearch:%QUERY%"
+        - "scsearch:%QUERY%"
+```
 
 ---
 
