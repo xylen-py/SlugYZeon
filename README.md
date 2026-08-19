@@ -221,7 +221,6 @@ GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
 - **[saraansx](https://github.com/saraansx)** — For help with Spotify integration.
 - **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — For providing the official Lavalink plugin template.
 - **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — For the foundational mirroring architecture and code structure.
-- **bongo-devs / jiosaavn-plugin** — For the architecture of external proxy API sources.
 
 ---
 
