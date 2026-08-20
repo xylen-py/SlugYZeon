@@ -7,9 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,24 +28,16 @@ public class PandoraTokenTracker {
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
     private final PandoraAudioSourceManager sourceManager;
-    private final String tokenApiUrl;
     private final String configCsrfToken;
-    private final boolean preferTokenApi;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
-            .build();
 
     private volatile String csrfToken;
     private volatile String authToken;
     private volatile Instant expires;
 
-    public PandoraTokenTracker(PandoraAudioSourceManager sourceManager, String tokenApiUrl,
-            String configCsrfToken, boolean preferTokenApi) {
+    public PandoraTokenTracker(PandoraAudioSourceManager sourceManager, String configCsrfToken) {
         this.sourceManager = sourceManager;
-        this.tokenApiUrl = tokenApiUrl;
         this.configCsrfToken = configCsrfToken;
-        this.preferTokenApi = preferTokenApi;
         if (configCsrfToken != null && !configCsrfToken.isEmpty()) {
             this.csrfToken = configCsrfToken;
         }
@@ -94,64 +83,6 @@ public class PandoraTokenTracker {
     }
 
     private void refreshTokens() throws IOException {
-        if (preferTokenApi) {
-            try {
-                refreshFromTokenApi();
-                return;
-            } catch (Exception e) {
-                log.warn("Failed to fetch tokens from external API ({}), falling back to anonymous login",
-                        e.getMessage());
-            }
-            refreshFromAnonymousLogin();
-        } else {
-            try {
-                refreshFromAnonymousLogin();
-                return;
-            } catch (Exception e) {
-                log.warn("Failed anonymous login ({}), falling back to external token API", e.getMessage());
-            }
-            try {
-                refreshFromTokenApi();
-            } catch (Exception e) {
-                throw new IOException("All Pandora token refresh methods failed", e);
-            }
-        }
-    }
-
-    private void refreshFromTokenApi() throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(tokenApiUrl))
-                .timeout(Duration.ofSeconds(15))
-                .header("User-Agent", USER_AGENT)
-                .GET()
-                .build();
-
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new IOException("Token API returned status " + response.statusCode());
-        }
-
-        JsonNode json = mapper.readTree(response.body());
-        if (!json.has("success") || !json.get("success").asBoolean()) {
-            throw new IOException("Token API returned success=false");
-        }
-
-        String csrf = json.has("csrfToken") ? json.get("csrfToken").asText(null) : null;
-        String auth = json.has("authToken") ? json.get("authToken").asText(null) : null;
-
-        if (csrf == null || csrf.isEmpty() || auth == null || auth.isEmpty()) {
-            throw new IOException("Token API returned empty tokens");
-        }
-
-        this.csrfToken = csrf;
-        this.authToken = auth;
-
-        long expiresIn = json.has("expires_in_seconds") ? json.get("expires_in_seconds").asLong(300) : 300;
-        this.expires = Instant.now().plusSeconds(Math.max(expiresIn - 30, 30));
-        log.debug("Successfully refreshed Pandora tokens from external API (expires in {}s)", expiresIn);
-    }
-
-    private void refreshFromAnonymousLogin() throws IOException {
         if (csrfToken == null || csrfToken.isEmpty()) {
             csrfToken = Long.toHexString(System.currentTimeMillis());
         }

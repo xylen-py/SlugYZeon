@@ -7,18 +7,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class PandoraConfig {
 
-    private String tokenApiUrl = "";
     private String csrfToken = "";
-    private boolean preferTokenApi = true;
     private int searchLimit = 6;
-
-    public String getTokenApiUrl() {
-        return tokenApiUrl;
-    }
-
-    public void setTokenApiUrl(String tokenApiUrl) {
-        this.tokenApiUrl = tokenApiUrl;
-    }
 
     public String getCsrfToken() {
         return csrfToken;
@@ -26,14 +16,6 @@ public class PandoraConfig {
 
     public void setCsrfToken(String csrfToken) {
         this.csrfToken = csrfToken;
-    }
-
-    public boolean isPreferTokenApi() {
-        return preferTokenApi;
-    }
-
-    public void setPreferTokenApi(boolean preferTokenApi) {
-        this.preferTokenApi = preferTokenApi;
     }
 
     public int getSearchLimit() {

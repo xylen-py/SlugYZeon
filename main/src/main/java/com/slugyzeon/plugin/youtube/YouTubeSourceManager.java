@@ -27,12 +27,20 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager httpSourceManager = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager();
 
+    public com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager getHttpSourceManager() {
+        return httpSourceManager;
+    }
+
     public YouTubeSourceManager(
             String apiUrl,
             String masterKey,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
         this.audioPlayerManager = audioPlayerManager;
-        this.apiUrl = apiUrl;
+        if (apiUrl != null && !apiUrl.startsWith("http://") && !apiUrl.startsWith("https://")) {
+            this.apiUrl = "http://" + apiUrl;
+        } else {
+            this.apiUrl = apiUrl;
+        }
         this.masterKey = masterKey;
     }
 
@@ -77,6 +85,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 this.originalYouTubeSource = source;
                 sources.set(i, this);
                 this.attached = true;
+                log.info("Attached SlugYZeon-YTCDN to YouTube source {}", source.getClass().getName());
                 return true;
             }
         }
@@ -184,17 +193,32 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 String author = json.path("author").asText("Unknown");
                 long length = json.path("length").asLong(Long.MAX_VALUE);
                 String thumb = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+                String streamUrl = apiUrl + "/api/v1/stream/" + videoId;
                 
                 AudioTrackInfo info = new AudioTrackInfo(
                     title, author, length, videoId,
-                    false, apiUrl + "/api/v1/stream/" + videoId, thumb, null);
+                    false, streamUrl, thumb, null);
                 
-                com.sedmelluq.discord.lavaplayer.track.AudioTrack httpTrack = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioTrack(info, new com.sedmelluq.discord.lavaplayer.container.MediaContainerDescriptor(null, null), httpSourceManager);
-                
-                return new YouTubeTrack(info, videoId, httpTrack, this);
+                return new YouTubeTrack(info, videoId, null, this, streamUrl);
             }
         } catch (Exception e) {
             log.error("Failed to fetch metadata from CDN for {}", videoId, e);
+        }
+        return null;
+    }
+
+    String checkCdnStreamUrl(String videoId) {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
+                .header("User-Agent", "SlugYZeon-Node")
+                .timeout(java.time.Duration.ofSeconds(3))
+                .GET().build();
+            java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200 && res.body() != null) {
+                return apiUrl + "/api/v1/stream/" + videoId;
+            }
+        } catch (Exception ignored) {
         }
         return null;
     }
@@ -207,7 +231,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
             String id = m.group(1);
             return id.length() >= 11 ? id.substring(0, 11) : id;
         }
-        return url;
+        return null;
     }
 
     private AudioTrack wrapTrack(AudioTrack original) {

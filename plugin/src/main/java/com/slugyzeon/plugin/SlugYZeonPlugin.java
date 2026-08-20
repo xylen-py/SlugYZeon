@@ -3,9 +3,7 @@ package com.slugyzeon.plugin;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.slugyzeon.plugin.amazonmusic.AmazonMusicAudioSourceManager;
 import com.slugyzeon.plugin.config.*;
-import com.slugyzeon.plugin.deezer.DeezerAudioSourceManager;
 import com.slugyzeon.plugin.gaana.GaanaAudioSourceManager;
-import com.slugyzeon.plugin.instagram.InstagramAudioSourceManager;
 import com.slugyzeon.plugin.pandora.PandoraAudioSourceManager;
 import com.slugyzeon.plugin.spotify.SpotifyAudioSourceManager;
 import com.slugyzeon.plugin.youtube.YouTubeSourceManager;
@@ -29,32 +27,24 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
 
     private GaanaAudioSourceManager gaana;
     private AmazonMusicAudioSourceManager amazonMusic;
-    private InstagramAudioSourceManager instagram;
     private PandoraAudioSourceManager pandora;
     private SpotifyAudioSourceManager spotify;
     private YouTubeSourceManager youtube;
-    private DeezerAudioSourceManager deezer;
 
     public SlugYZeonPlugin(
             org.springframework.core.env.Environment env,
             SlugYZeonSourcesConfig sourcesConfig,
             GaanaConfig gaanaConfig,
             AmazonMusicConfig amazonMusicConfig,
-            InstagramConfig instagramConfig,
             PandoraConfig pandoraConfig,
             SlugYZeonSpotifyConfig spotifyConfig,
-            SlugYZeonYouTubeConfig youtubeConfig,
-            SlugYZeonDeezerConfig deezerConfig) {
+            SlugYZeonYouTubeConfig youtubeConfig) {
         log.info("Loading SlugYZeoN plugin...");
         
-        String[] lavasrcProviders = env.getProperty("plugins.lavasrc.providers", String[].class);
         String[] slugyzeonProviders = env.getProperty("plugins.slugyzeon.providers", String[].class);
         
         String[] providersToUse = DEFAULT_PROVIDERS;
-        if (lavasrcProviders != null && lavasrcProviders.length > 0) {
-            providersToUse = lavasrcProviders;
-            log.info("SlugYZeoN has smartly synced mirroring providers from LavaSrc's config!");
-        } else if (slugyzeonProviders != null && slugyzeonProviders.length > 0) {
+        if (slugyzeonProviders != null && slugyzeonProviders.length > 0) {
             providersToUse = slugyzeonProviders;
         }
 
@@ -75,15 +65,10 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     amazonMusicConfig.getArtistLoadLimit(),
                     unused -> manager);
         }
-        if (sourcesConfig.isInstagram()) {
-            this.instagram = new InstagramAudioSourceManager();
-        }
         if (sourcesConfig.isPandora()) {
             this.pandora = new PandoraAudioSourceManager(
                     providersToUse,
-                    pandoraConfig.getTokenApiUrl(),
                     pandoraConfig.getCsrfToken(),
-                    pandoraConfig.isPreferTokenApi(),
                     pandoraConfig.getSearchLimit(),
                     unused -> manager);
         }
@@ -96,14 +81,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
                     spotifyConfig.isResolveArtistsInSearch(),
                     spotifyConfig.isLocalFiles(),
                     unused -> manager);
-        }
-        if (sourcesConfig.isDeezer()) {
-            this.deezer = new DeezerAudioSourceManager(
-                    deezerConfig.getApiUrl(),
-                    deezerConfig.getPlaylistLoadLimit(),
-                    deezerConfig.getAlbumLoadLimit(),
-                    deezerConfig.getArtistLoadLimit(),
-                    deezerConfig.getQuality());
         }
         if (sourcesConfig.isYoutube()) {
             if (youtubeConfig.getApiUrl() != null && !youtubeConfig.getApiUrl().trim().isEmpty() &&
@@ -125,10 +102,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
             log.info("Registering Amazon Music audio source manager...");
             manager.registerSourceManager(amazonMusic);
         }
-        if (instagram != null) {
-            log.info("Registering Instagram audio source manager...");
-            manager.registerSourceManager(instagram);
-        }
         if (pandora != null) {
             log.info("Registering Pandora audio source manager...");
             manager.registerSourceManager(pandora);
@@ -136,10 +109,6 @@ public class SlugYZeonPlugin implements AudioPlayerManagerConfiguration {
         if (spotify != null) {
             log.info("Registering Spotify audio source manager...");
             manager.registerSourceManager(spotify);
-        }
-        if (deezer != null) {
-            log.info("Registering Deezer audio source manager...");
-            manager.registerSourceManager(deezer);
         }
 
         return manager;

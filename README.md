@@ -7,7 +7,7 @@
 # SlugYZeon
 
 > [!NOTE]
-> Multi-source lavalink plugin featuring 7 audio sources, zero rate limits, and zero credentials needed. Built entirely with Java's native `HttpClient`.
+> Multi-source lavalink plugin featuring 5 audio sources, zero rate limits, and zero credentials needed. Built entirely with Java's native `HttpClient`.
 
 ## Summary
 
@@ -26,17 +26,13 @@
 | Amazon Music   | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
 | Spotify        | tracks, albums, playlists, artists               | [Mirror](#what-is-mirroring) |
 | Gaana          | songs, albums, playlists, artists                | Native Stream (HLS)          |
-| Instagram      | posts, reels, audio pages                        | Native Stream (MP4 CDN)      |
 | Pandora        | tracks, albums, playlists, artists, stations     | [Mirror](#what-is-mirroring) |
-| Deezer         | tracks, albums, playlists, artists               | Native Stream (Decrypted)    |
 
 ### Features
 
 - **Mirror System** — ISRC-first resolution with automatic query fallback for mirrored sources.
 - **Spotify GraphQL API** — Zero-downtime hash rotation, asynchronous infinite pagination, bypasses rate limits.
 - **Gaana Native Streaming** — Fully persistent HLS chunk buffering directly from Akamai CDN.
-- **Instagram Native Playback** — Auto-scraped tokens with token rotation, supports posts, reels, audio pages.
-- **Deezer Native Streaming** — Direct CDN playback with on-the-fly blowfish decryption.
 - **Rich Metadata** — Returns extended playlists, ISRC codes, album/artist URLs, and preview URLs.
 - **Zero HTTP Dependencies** — Relies entirely on Java's native `HttpClient` for maximal performance.
 - **Seamless Integration** — Plugs directly into standard Lavalink 4.0+ via spring boot.
@@ -70,14 +66,18 @@ lavalink:
 ```yaml
 plugins:
   slugyzeon:
+    # Providers used for resolving mirrored tracks like Spotify/Pandora
+    providers:
+      - "dzisrc:%ISRC%"
+      - "ytsearch:\"%ISRC%\""
+      - "ytmsearch:%QUERY%"
+      - "ytsearch:%QUERY%"
     sources:
       # Set to true to enable the specific source
       gaana: false
       amazonmusic: false
-      instagram: false
       pandora: false
       spotify: false
-      deezer: false
     spotify:
       countryCode: "US" # the country code for filtering artist top tracks
       playlistLoadLimit: 6 # The number of pages at 100 tracks each
@@ -96,17 +96,8 @@ plugins:
       albumLoadLimit: 50
       artistLoadLimit: 50
     pandora:
-      tokenApiUrl: "" # External API URL to auto-refresh CSRF tokens (REQUIRED if hosting outside the US)
       # csrfToken: "your csrftoken" # Manual CSRF cookie from pandora.com (Only works if node is hosted inside the US)
-      preferTokenApi: true # Prioritize using the token API over the manual CSRF token
       searchLimit: 6
-    deezer:
-      apiUrl: "https://deezer-plugin-api.vercel.app/api" # The API proxy required to bypass Deezer region-blocking
-      playlistLoadLimit: 50
-      albumLoadLimit: 50
-      artistLoadLimit: 50
-      searchLimit: 25
-      quality: "128" # The format/quality to stream. Available: "128", "320", or "FLAC"
 ```
 
 ---
@@ -158,19 +149,6 @@ GET /v4/loadtracks?identifier=https://music.amazon.com/playlists/B07QGZ1GJ6
 GET /v4/loadtracks?identifier=https://music.amazon.com/artists/B001GBY2LE
 ```
 
-### Instagram
-
-```bash
-# post
-GET /v4/loadtracks?identifier=https://www.instagram.com/p/ABC123/
-
-# reel
-GET /v4/loadtracks?identifier=https://www.instagram.com/reel/ABC123/
-
-# audio page
-GET /v4/loadtracks?identifier=https://www.instagram.com/reels/audio/123456789/
-```
-
 ### Pandora
 
 ```bash
@@ -187,22 +165,6 @@ GET /v4/loadtracks?identifier=https://www.pandora.com/playlist/PLxxxxxx
 GET /v4/loadtracks?identifier=https://www.pandora.com/station/STxxxxxx
 ```
 
-### Deezer
-
-```bash
-# search
-GET /v4/loadtracks?identifier=dzsearch:Starboy
-
-# recommendations (charts)
-GET /v4/loadtracks?identifier=dzrec:top
-
-# url support
-GET /v4/loadtracks?identifier=https://www.deezer.com/track/142734142
-GET /v4/loadtracks?identifier=https://www.deezer.com/album/14279764
-GET /v4/loadtracks?identifier=https://www.deezer.com/playlist/53362031
-GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
-```
-
 ---
 
 ## Build
@@ -217,7 +179,7 @@ GET /v4/loadtracks?identifier=https://www.deezer.com/artist/4050205
 
 ## Credits
 
-- **[xylen-py](https://github.com/xylen-py)** — For plugin APIs & sources for Deezer, Gaana, & Amazon Music.
+- **[xylen-py](https://github.com/xylen-py)** — For plugin APIs & sources for Gaana & Amazon Music.
 - **[saraansx](https://github.com/saraansx)** — For help with Spotify integration.
 - **[lavalink-devs](https://github.com/lavalink-devs/lavalink-plugin-template)** — For providing the official Lavalink plugin template.
 - **[topi314 / LavaSrc](https://github.com/topi314/LavaSrc)** — For the foundational mirroring architecture and code structure.
