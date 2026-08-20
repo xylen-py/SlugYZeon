@@ -11,6 +11,7 @@ import (
 	"github.com/zeon/slugyzeon-ytcdn/config"
 	"github.com/zeon/slugyzeon-ytcdn/handlers"
 	"github.com/zeon/slugyzeon-ytcdn/middleware"
+	"github.com/zeon/slugyzeon-ytcdn/cleaner"
 )
 
 func main() {
@@ -19,6 +20,8 @@ func main() {
 	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
 		log.Fatalf("Failed to create cache directory: %v", err)
 	}
+
+	go cleaner.StartLRUCleaner(85.0)
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: 100 * 1024 * 1024,

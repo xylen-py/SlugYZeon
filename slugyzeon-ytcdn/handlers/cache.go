@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/zeon/slugyzeon-ytcdn/config"
@@ -42,6 +43,9 @@ func StreamAudio(c *fiber.Ctx) error {
 			return c.Status(404).JSON(fiber.Map{"error": "Audio file not found in cache"})
 		}
 	}
+
+	now := time.Now()
+	os.Chtimes(dirPath, now, now)
 
 	return c.SendFile(audioPath)
 }
