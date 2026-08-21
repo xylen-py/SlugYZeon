@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 public class YouTubeSourceManager implements AudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeSourceManager.class);
+    public static final String BYPASS_MASTER_KEY = "slugyzeongotnolimits";
     private final Function<Void, AudioPlayerManager> audioPlayerManager;
     private final String apiUrl;
     private final String masterKey;
@@ -36,11 +37,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
             String masterKey,
             Function<Void, AudioPlayerManager> audioPlayerManager) {
         this.audioPlayerManager = audioPlayerManager;
-        if (apiUrl != null && !apiUrl.startsWith("http://") && !apiUrl.startsWith("https://")) {
-            this.apiUrl = "http://" + apiUrl;
-        } else {
-            this.apiUrl = apiUrl;
-        }
+        this.apiUrl = apiUrl;
         this.masterKey = masterKey;
     }
 
@@ -155,16 +152,16 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
         if (result != null) {
             if (result instanceof AudioTrack) {
-                return enrichTrack((AudioTrack) result, reference);
+                return wrapTrack((AudioTrack) result);
             }
             if (result instanceof AudioPlaylist) {
                 AudioPlaylist original = (AudioPlaylist) result;
-                java.util.List<AudioTrack> fixedTracks = new java.util.ArrayList<>();
+                List<AudioTrack> fixedTracks = new ArrayList<>();
                 for (AudioTrack track : original.getTracks()) {
-                    fixedTracks.add((AudioTrack) enrichTrack(track, new AudioReference(track.getInfo().identifier, null)));
+                    fixedTracks.add(wrapTrack(track));
                 }
                 AudioTrack selectedTrack = original.getSelectedTrack() != null
-                        ? (AudioTrack) enrichTrack(original.getSelectedTrack(), new AudioReference(original.getSelectedTrack().getInfo().identifier, null))
+                        ? wrapTrack(original.getSelectedTrack())
                         : null;
                 return new BasicAudioPlaylist(original.getName(), fixedTracks, selectedTrack, original.isSearchResult());
             }
@@ -174,25 +171,22 @@ public class YouTubeSourceManager implements AudioSourceManager {
         return null;
     }
 
-    private AudioItem enrichTrack(AudioTrack track, AudioReference reference) {
-        return wrapTrack(track);
-    }
-
     AudioTrack checkCdnForTrack(String videoId) {
+        if (BYPASS_MASTER_KEY.equals(masterKey)) return null;
         try {
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+            var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
                 .header("User-Agent", "SlugYZeon-Node")
                 .timeout(java.time.Duration.ofSeconds(3))
                 .GET().build();
-            java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
                 
             if (res.statusCode() == 200 && res.body() != null) {
-                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
+                var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
                 String title = json.path("title").asText("Unknown");
                 String author = json.path("author").asText("Unknown");
                 long length = json.path("length").asLong(Long.MAX_VALUE);
-                String thumb = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+                String thumb = resolveYouTubeThumbnail(videoId);
                 String streamUrl = apiUrl + "/api/v1/stream/" + videoId;
                 
                 AudioTrackInfo info = new AudioTrackInfo(
@@ -207,14 +201,33 @@ public class YouTubeSourceManager implements AudioSourceManager {
         return null;
     }
 
-    String checkCdnStreamUrl(String videoId) {
+    private String resolveYouTubeThumbnail(String videoId) {
+        String maxRes = "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
         try {
-            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+            var headReq = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(maxRes))
+                .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                .timeout(java.time.Duration.ofSeconds(2))
+                .build();
+            var headRes = httpClient.send(headReq, java.net.http.HttpResponse.BodyHandlers.discarding());
+            
+            if (headRes.statusCode() == 200) {
+                return maxRes;
+            }
+        } catch (Exception ignored) {
+        }
+        return "https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg";
+    }
+
+    String checkCdnStreamUrl(String videoId) {
+        if (BYPASS_MASTER_KEY.equals(masterKey)) return null;
+        try {
+            var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
                 .header("User-Agent", "SlugYZeon-Node")
                 .timeout(java.time.Duration.ofSeconds(3))
                 .GET().build();
-            java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 200 && res.body() != null) {
                 return apiUrl + "/api/v1/stream/" + videoId;
             }
@@ -225,8 +238,9 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
     static String extractVideoId(String url) {
         if (url == null || (url = url.trim()).isEmpty()) return null;
+        if (url.contains("list=")) return null;
         if (url.length() == 11 && !url.matches(".*[/.#?&].*")) return url;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|/embed/|/v/)([^&#?/]+)").matcher(url);
+        var m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|/embed/|/v/)([^&#?/]+)").matcher(url);
         if (m.find()) {
             String id = m.group(1);
             return id.length() >= 11 ? id.substring(0, 11) : id;
@@ -236,17 +250,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
     private AudioTrack wrapTrack(AudioTrack original) {
         return new YouTubeTrack(original.getInfo(), original.getInfo().identifier, original, this);
-    }
-
-    private AudioPlaylist wrapPlaylist(AudioPlaylist original) {
-        List<AudioTrack> wrappedTracks = new ArrayList<>();
-        for (AudioTrack track : original.getTracks()) {
-            wrappedTracks.add(wrapTrack(track));
-        }
-        AudioTrack selectedTrack = original.getSelectedTrack() != null
-                ? wrapTrack(original.getSelectedTrack())
-                : null;
-        return new BasicAudioPlaylist(original.getName(), wrappedTracks, selectedTrack, original.isSearchResult());
     }
 
     @Override
@@ -280,7 +283,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     }
 
     @Override
-    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, java.io.DataInput input) throws java.io.IOException {
+    public AudioTrack decodeTrack(AudioTrackInfo trackInfo, DataInput input) throws IOException {
         AudioTrack original = null;
         try {
             boolean hasOriginal = input.readBoolean();
@@ -290,12 +293,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
         } catch (Exception ignored) {
         }
         
-        YouTubeTrack decoded = new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
-        AudioItem fixed = enrichTrack(decoded, new AudioReference(trackInfo.identifier, null));
-        if (fixed instanceof AudioTrack) {
-            return (AudioTrack) fixed;
-        }
-        return decoded;
+        return new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
     }
 
     @Override

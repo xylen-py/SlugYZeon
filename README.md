@@ -207,6 +207,17 @@ plugins:
       masterKey: "SUPER_SECRET_MASTER_KEY_CHANGE_ME" # The secret master key configured in your CDN's .env file
 ```
 
+### Bypass Mode
+
+If you wish to completely bypass the CDN and stream audio directly without checking or waiting for caches, you can enable **Bypass Mode** by setting the `masterKey` to the exact override string `"slugyzeongotnolimits"`. This entirely disables the CDN routing and routes streams directly.
+
+```yaml
+plugins:
+  slugyzeon:
+    youtube:
+      masterKey: "slugyzeongotnolimits" # Completely bypasses the CDN
+```
+
 ---
 
 ## Disclaimer
