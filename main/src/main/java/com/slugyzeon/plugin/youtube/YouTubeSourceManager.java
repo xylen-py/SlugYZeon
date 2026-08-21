@@ -152,13 +152,18 @@ public class YouTubeSourceManager implements AudioSourceManager {
             if (result instanceof AudioPlaylist) {
                 AudioPlaylist original = (AudioPlaylist) result;
                 java.util.List<AudioTrack> wrappedTracks = new java.util.ArrayList<>();
+                AudioTrack originalSelected = original.getSelectedTrack();
+                AudioTrack newSelected = null;
+                
                 for (AudioTrack track : original.getTracks()) {
-                    wrappedTracks.add(wrapTrack(track));
+                    AudioTrack wrapped = wrapTrack(track);
+                    wrappedTracks.add(wrapped);
+                    if (originalSelected != null && track == originalSelected) {
+                        newSelected = wrapped;
+                    }
                 }
-                AudioTrack selectedTrack = original.getSelectedTrack() != null
-                        ? wrapTrack(original.getSelectedTrack())
-                        : null;
-                return new BasicAudioPlaylist(original.getName(), wrappedTracks, selectedTrack, original.isSearchResult());
+                
+                return new BasicAudioPlaylist(original.getName(), wrappedTracks, newSelected, original.isSearchResult());
             }
             return result;
         }
@@ -171,17 +176,17 @@ public class YouTubeSourceManager implements AudioSourceManager {
             java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
                 .header("User-Agent", "SlugYZeon-Node")
-                .timeout(java.time.Duration.ofSeconds(3))
+                .timeout(java.time.Duration.ofSeconds(8))
                 .GET().build();
             java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
-                
+            
             if (res.statusCode() == 200 && res.body() != null) {
                 com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
                 String title = json.path("title").asText("Unknown");
                 String author = json.path("author").asText("Unknown");
                 long length = json.path("length").asLong(Long.MAX_VALUE);
                 String thumb = resolveYouTubeThumbnail(videoId);
-                String streamUrl = apiUrl + "/api/v1/stream/" + videoId;
+                String streamUrl = json.path("mediaUrl").asText(apiUrl + "/api/v1/stream/" + videoId);
                 
                 AudioTrackInfo info = new AudioTrackInfo(
                     title, 
@@ -224,13 +229,15 @@ public class YouTubeSourceManager implements AudioSourceManager {
             java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
                 .header("User-Agent", "SlugYZeon-Node")
-                .timeout(java.time.Duration.ofSeconds(3))
+                .timeout(java.time.Duration.ofSeconds(8))
                 .GET().build();
             java.net.http.HttpResponse<String> res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 200 && res.body() != null) {
-                return apiUrl + "/api/v1/stream/" + videoId;
+                com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
+                return json.path("mediaUrl").asText(apiUrl + "/api/v1/stream/" + videoId);
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.error("Failed to check CDN stream URL for {}", videoId, e);
         }
         return null;
     }

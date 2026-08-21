@@ -56,16 +56,16 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         boolean skipCdn = trackInfo.isStream || (trackInfo.length > 0 && trackInfo.length <= 60000L);
 
         String streamUrl = cdnStreamUrl;
-        if (!skipCdn && streamUrl == null && originalTrack != null) {
+        if (!skipCdn && streamUrl == null) {
             streamUrl = sourceManager.checkCdnStreamUrl(videoId);
         }
-
         if (!skipCdn && streamUrl != null) {
             try {
                 log.info("Playing track {} via SlugYZeon-YTCDN", videoId);
                 playCdnStreamFromUrl(streamUrl, executor);
                 return;
             } catch (Exception e) {
+                log.error("YTCDN Critical Error playing CDN stream for {}: ", videoId, e);
             }
         }
 
@@ -102,7 +102,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
     private void playCdnStreamFromUrl(String streamUrl, LocalAudioTrackExecutor executor) throws Exception {
         try (HttpInterface httpInterface = sourceManager.getHttpSourceManager().getHttpInterface()) {
-            try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), Long.MAX_VALUE)) {
+            try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), null)) {
                 int statusCode = stream.checkStatusCode();
                 if (statusCode != 200 && statusCode != 206) {
                     throw new FriendlyException(
@@ -114,7 +114,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     MediaContainerRegistry.DEFAULT_REGISTRY,
                     new AudioReference(streamUrl, null),
                     stream,
-                    MediaContainerHints.from(null, null)
+                    MediaContainerHints.from("audio/mp4", "mp4")
                 ).detectContainer();
 
                 if (result == null || !result.isContainerDetected() || result.isReference()) {
@@ -122,6 +122,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                         "Could not detect audio format from CDN for " + videoId,
                         FriendlyException.Severity.SUSPICIOUS, null);
                 }
+                
+                stream.seek(0);
 
                 InternalAudioTrack internalTrack = (InternalAudioTrack) result.getContainerDescriptor()
                     .createTrack(trackInfo, stream);
