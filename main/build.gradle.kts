@@ -23,7 +23,6 @@ repositories {
 
 dependencies {
     compileOnly("dev.arbjerg:lavaplayer:2.0.4")
-    compileOnly("dev.lavalink.youtube:common:1.18.2")
     compileOnly("com.fasterxml.jackson.core:jackson-databind:2.17.0")
     compileOnly("org.slf4j:slf4j-api:2.0.9")
 }
