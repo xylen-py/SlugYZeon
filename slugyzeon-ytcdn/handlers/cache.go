@@ -1,15 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
+	"database/sql"
 	"regexp"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/zeon/slugyzeon-ytcdn/config"
+	"github.com/zeon/slugyzeon-ytcdn/database"
 )
 
 var videoIdRegex = regexp.MustCompile(`^[a-zA-Z0-9_-]{11}$`)
@@ -20,12 +16,15 @@ func GetMetadata(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid Video ID"})
 	}
 
-	metadataPath := filepath.Join(config.CacheDir, videoId, "metadata.json")
-	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		return c.Status(404).JSON(fiber.Map{"error": "Track not found in cache"})
+	metadata, err := database.GetMetadata(videoId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(fiber.Map{"error": "Track not found in cache"})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
-	return c.SendFile(metadataPath)
+	return c.JSON(metadata)
 }
 
 func StreamAudio(c *fiber.Ctx) error {
@@ -34,20 +33,19 @@ func StreamAudio(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid Video ID"})
 	}
 
-	dirPath := filepath.Join(config.CacheDir, videoId)
-	
-	audioPath := filepath.Join(dirPath, "audio.webm")
-	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
-		audioPath = filepath.Join(dirPath, "audio.m4a")
-		if _, err := os.Stat(audioPath); os.IsNotExist(err) {
-			return c.Status(404).JSON(fiber.Map{"error": "Audio file not found in cache"})
+	mediaUrl, err := database.GetMediaUrl(videoId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(fiber.Map{"error": "Audio stream not found"})
 		}
+		return c.Status(500).JSON(fiber.Map{"error": "Database error"})
 	}
 
-	now := time.Now()
-	os.Chtimes(dirPath, now, now)
+	if mediaUrl == "" {
+		return c.Status(404).JSON(fiber.Map{"error": "Media URL not found in metadata"})
+	}
 
-	return c.SendFile(audioPath)
+	return c.Redirect(mediaUrl, 302)
 }
 
 func UploadCache(c *fiber.Ctx) error {
@@ -56,52 +54,18 @@ func UploadCache(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid Video ID format"})
 	}
 
-	metadataStr := c.FormValue("metadata")
-	if metadataStr == "" {
-		return c.Status(400).JSON(fiber.Map{"error": "Missing metadata JSON in form"})
+	var payload database.TrackData
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid JSON payload"})
 	}
 
-	var dummy map[string]interface{}
-	if err := json.Unmarshal([]byte(metadataStr), &dummy); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid JSON format in metadata"})
+	if payload.MediaUrl == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "Missing mediaUrl in payload"})
 	}
 
-	fileHeader, err := c.FormFile("audio")
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Missing audio file in form"})
+	if err := database.SaveTrack(videoId, payload); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to save track data"})
 	}
 
-	file, err := fileHeader.Open()
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to open uploaded file"})
-	}
-	
-	magicBytes := make([]byte, 512)
-	file.Read(magicBytes)
-	file.Close()
-
-	ext := filepath.Ext(fileHeader.Filename)
-	if ext != ".webm" && ext != ".m4a" {
-		ext = ".webm"
-	}
-
-	trackDir := filepath.Join(config.CacheDir, videoId)
-	if err := os.MkdirAll(trackDir, 0755); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to create track directory"})
-	}
-
-	err = os.WriteFile(filepath.Join(trackDir, "metadata.json"), []byte(metadataStr), 0644)
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to write metadata"})
-	}
-
-	audioPath := filepath.Join(trackDir, "audio"+ext)
-	if err := c.SaveFile(fileHeader, audioPath); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to save audio file"})
-	}
-
-	return c.Status(200).JSON(fiber.Map{
-		"status": "success",
-		"message": fmt.Sprintf("Cached %s successfully", videoId),
-	})
+	return c.Status(200).JSON(fiber.Map{"status": "ok"})
 }

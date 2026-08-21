@@ -8,7 +8,6 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -22,7 +21,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private final String apiUrl;
     private final String masterKey;
     private AudioSourceManager originalYouTubeSource;
-    private boolean attached = false;
     private final java.util.concurrent.ExecutorService networkExecutor = java.util.concurrent.Executors.newFixedThreadPool(10);
     private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager httpSourceManager = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager();
@@ -56,10 +54,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
         return audioPlayerManager;
     }
 
-    public boolean isAttached() {
-        return attached;
-    }
-
     public AudioSourceManager getOriginalYouTubeSource() {
         return originalYouTubeSource;
     }
@@ -84,7 +78,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
             if (isYouTube) {
                 this.originalYouTubeSource = source;
                 sources.set(i, this);
-                this.attached = true;
                 log.info("Attached SlugYZeon-YTCDN to YouTube source {}", source.getClass().getName());
                 return true;
             }
@@ -139,43 +132,38 @@ public class YouTubeSourceManager implements AudioSourceManager {
             return null;
 
         String videoId = extractVideoId(reference.identifier);
-        if (videoId != null) {
+        boolean isShortsUrl = reference.identifier != null && reference.identifier.contains("/shorts/");
+        if (videoId != null && !isShortsUrl) {
             AudioTrack cdnTrack = checkCdnForTrack(videoId);
             if (cdnTrack != null) return cdnTrack;
         }
 
         AudioItem result = null;
-        Exception loadError = null;
 
         try {
             result = originalYouTubeSource.loadItem(manager, reference);
         } catch (Exception e) {
-            loadError = e;
         }
 
         if (result != null) {
             if (result instanceof AudioTrack) {
-                return enrichTrack((AudioTrack) result, reference);
+                return wrapTrack((AudioTrack) result);
             }
             if (result instanceof AudioPlaylist) {
                 AudioPlaylist original = (AudioPlaylist) result;
-                java.util.List<AudioTrack> fixedTracks = new java.util.ArrayList<>();
+                java.util.List<AudioTrack> wrappedTracks = new java.util.ArrayList<>();
                 for (AudioTrack track : original.getTracks()) {
-                    fixedTracks.add((AudioTrack) enrichTrack(track, new AudioReference(track.getInfo().identifier, null)));
+                    wrappedTracks.add(wrapTrack(track));
                 }
                 AudioTrack selectedTrack = original.getSelectedTrack() != null
-                        ? (AudioTrack) enrichTrack(original.getSelectedTrack(), new AudioReference(original.getSelectedTrack().getInfo().identifier, null))
+                        ? wrapTrack(original.getSelectedTrack())
                         : null;
-                return new BasicAudioPlaylist(original.getName(), fixedTracks, selectedTrack, original.isSearchResult());
+                return new BasicAudioPlaylist(original.getName(), wrappedTracks, selectedTrack, original.isSearchResult());
             }
             return result;
         }
 
         return null;
-    }
-
-    private AudioItem enrichTrack(AudioTrack track, AudioReference reference) {
-        return wrapTrack(track);
     }
 
     AudioTrack checkCdnForTrack(String videoId) {
@@ -192,12 +180,19 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 String title = json.path("title").asText("Unknown");
                 String author = json.path("author").asText("Unknown");
                 long length = json.path("length").asLong(Long.MAX_VALUE);
-                String thumb = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+                String thumb = resolveYouTubeThumbnail(videoId);
                 String streamUrl = apiUrl + "/api/v1/stream/" + videoId;
                 
                 AudioTrackInfo info = new AudioTrackInfo(
-                    title, author, length, videoId,
-                    false, streamUrl, thumb, null);
+                    title, 
+                    author, 
+                    length, 
+                    videoId,
+                    false, 
+                    streamUrl, 
+                    thumb, 
+                    null
+                );
                 
                 return new YouTubeTrack(info, videoId, null, this, streamUrl);
             }
@@ -205,6 +200,23 @@ public class YouTubeSourceManager implements AudioSourceManager {
             log.error("Failed to fetch metadata from CDN for {}", videoId, e);
         }
         return null;
+    }
+
+    private String resolveYouTubeThumbnail(String videoId) {
+        String maxRes = "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
+        try {
+            java.net.http.HttpRequest headReq = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create(maxRes))
+                .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                .timeout(java.time.Duration.ofSeconds(2))
+                .build();
+            java.net.http.HttpResponse<Void> headRes = httpClient.send(headReq, java.net.http.HttpResponse.BodyHandlers.discarding());
+            if (headRes.statusCode() == 200) {
+                return maxRes;
+            }
+        } catch (Exception ignored) {
+        }
+        return "https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg";
     }
 
     String checkCdnStreamUrl(String videoId) {
@@ -236,17 +248,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
 
     private AudioTrack wrapTrack(AudioTrack original) {
         return new YouTubeTrack(original.getInfo(), original.getInfo().identifier, original, this);
-    }
-
-    private AudioPlaylist wrapPlaylist(AudioPlaylist original) {
-        List<AudioTrack> wrappedTracks = new ArrayList<>();
-        for (AudioTrack track : original.getTracks()) {
-            wrappedTracks.add(wrapTrack(track));
-        }
-        AudioTrack selectedTrack = original.getSelectedTrack() != null
-                ? wrapTrack(original.getSelectedTrack())
-                : null;
-        return new BasicAudioPlaylist(original.getName(), wrappedTracks, selectedTrack, original.isSearchResult());
     }
 
     @Override
@@ -290,12 +291,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
         } catch (Exception ignored) {
         }
         
-        YouTubeTrack decoded = new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
-        AudioItem fixed = enrichTrack(decoded, new AudioReference(trackInfo.identifier, null));
-        if (fixed instanceof AudioTrack) {
-            return (AudioTrack) fixed;
-        }
-        return decoded;
+        return new YouTubeTrack(trackInfo, trackInfo.identifier, original, this);
     }
 
     @Override

@@ -6,16 +6,16 @@ import (
 )
 
 var (
-	MasterKey string
-	Port      string
-	CacheDir  string
+	MasterKey   string
+	Port        string
+	DatabaseURL string
 )
 
 func Load() {
 	_ = godotenv.Load()
-	MasterKey = getEnv("MASTER_KEY", "SUPER_SECRET_MASTER_KEY_CHANGE_ME")
+	MasterKey = getEnv("MASTER_KEY", "49vK82mP9xQ2sL7w")
 	Port = getEnv("PORT", "3000")
-	CacheDir = getEnv("CACHE_DIR", "./cache")
+	DatabaseURL = getEnv("DATABASE_URL", "")
 }
 
 func getEnv(key, fallback string) string {

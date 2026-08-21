@@ -2,26 +2,21 @@ package main
 
 import (
 	"log"
-	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	"github.com/zeon/slugyzeon-ytcdn/config"
+	"github.com/zeon/slugyzeon-ytcdn/database"
 	"github.com/zeon/slugyzeon-ytcdn/handlers"
 	"github.com/zeon/slugyzeon-ytcdn/middleware"
-	"github.com/zeon/slugyzeon-ytcdn/cleaner"
 )
 
 func main() {
 	config.Load()
 
-	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
-		log.Fatalf("Failed to create cache directory: %v", err)
-	}
-
-	go cleaner.StartLRUCleaner(85.0)
+	database.InitDB()
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: 100 * 1024 * 1024,
@@ -34,9 +29,7 @@ func main() {
 	api.Get("/status", handlers.StatusHandler)
 	api.Get("/metadata/:videoId", handlers.GetMetadata)
 	api.Get("/stream/:videoId", handlers.StreamAudio)
-	
 	api.Post("/upload/:videoId", middleware.RequireMasterKey(), handlers.UploadCache)
-
 	log.Printf("SlugYZeon-YTCDN is starting on port %s...", config.Port)
 	log.Fatal(app.Listen(":" + config.Port))
 }
