@@ -69,7 +69,10 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         if (directUrl != null) {
             log.info("Playing track {} via SlugYZeon-YTCDN [Bypass Mode]", videoId);
             try {
-                playCdnStreamFromUrl(directUrl, executor);
+                if (!trackInfo.isStream && trackInfo.length <= 720000L) {
+                    triggerBackgroundUpload(directUrl);
+                }
+                playFromTempFile(directUrl, executor);
                 return;
             } catch (Exception ignored) {
             }
@@ -93,8 +96,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         }
 
         if (fallback != null) {
-            if (!trackInfo.isStream && trackInfo.length <= 720000L && directUrl != null) {
-                triggerBackgroundUpload(directUrl);
+            if (!trackInfo.isStream && trackInfo.length <= 720000L && directUrl == null) {
+                triggerBackgroundUpload(null);
             }
             processDelegate(fallback, executor);
             return;
@@ -137,6 +140,44 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         }
     }
 
+    private void playFromTempFile(String streamUrl, LocalAudioTrackExecutor executor) throws Exception {
+        java.nio.file.Path tempFile = java.nio.file.Files.createTempFile("ytcdn-", ".tmp");
+        try {
+            java.net.http.HttpClient client = sourceManager.getHttpClient();
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(new URI(streamUrl))
+                    .header("User-Agent", UA)
+                    .GET()
+                    .build();
+            
+            client.send(req, HttpResponse.BodyHandlers.ofFile(tempFile));
+
+            try (com.sedmelluq.discord.lavaplayer.tools.io.SeekableFileInputStream stream = new com.sedmelluq.discord.lavaplayer.tools.io.SeekableFileInputStream(tempFile.toFile())) {
+                MediaContainerDetectionResult result = new MediaContainerDetection(
+                        MediaContainerRegistry.DEFAULT_REGISTRY,
+                        new AudioReference(tempFile.toUri().toString(), null),
+                        stream,
+                        MediaContainerHints.from(null, null)
+                ).detectContainer();
+
+                if (result == null || !result.isContainerDetected() || result.isReference()) {
+                    throw new FriendlyException(
+                            "Could not detect audio format from temp file",
+                            FriendlyException.Severity.SUSPICIOUS, null);
+                }
+
+                InternalAudioTrack internalTrack = (InternalAudioTrack) result.getContainerDescriptor()
+                        .createTrack(trackInfo, stream);
+
+                processDelegate(internalTrack, executor);
+            }
+        } finally {
+            try {
+                java.nio.file.Files.deleteIfExists(tempFile);
+            } catch (Exception ignored) {}
+        }
+    }
+
     @Override
     public AudioSourceManager getSourceManager() {
         return sourceManager;
@@ -150,9 +191,16 @@ public class YouTubeTrack extends DelegatedAudioTrack {
     private void triggerBackgroundUpload(String audioUrl) {
         CompletableFuture.runAsync(() -> {
             try {
+                String finalUrl = audioUrl;
+                if (finalUrl == null) {
+                    finalUrl = tryY2mateApi(videoId);
+                }
+                if (finalUrl == null) {
+                    return;
+                }
 
                 var client = sourceManager.getHttpClient();
-                var request = HttpRequest.newBuilder().uri(new URI(audioUrl))
+                var request = HttpRequest.newBuilder().uri(new URI(finalUrl))
                         .header("User-Agent", UA)
                         .timeout(java.time.Duration.ofMinutes(5))
                         .GET().build();
@@ -168,7 +216,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                     metadataNode.put("author", trackInfo.author);
                     metadataNode.put("length", trackInfo.length);
                     var metadataJson = mapper.writeValueAsString(metadataNode);
-
                     var bodyStart = new StringBuilder()
                         .append("--").append(boundary).append("\r\n")
                         .append("Content-Disposition: form-data; name=\"metadata\"\r\n\r\n")
@@ -177,7 +224,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                         .append("Content-Disposition: form-data; name=\"audio\"; filename=\"").append(ext).append("\"\r\n")
                         .append("Content-Type: ").append(contentType).append("\r\n\r\n")
                         .toString();
-
                     var bodyEnd = "\r\n--" + boundary + "--\r\n";
                     var startStream = new java.io.ByteArrayInputStream(bodyStart.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     var endStream = new java.io.ByteArrayInputStream(bodyEnd.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -229,7 +275,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             if (key == null) return null;
             
             String payload = "link=https://youtu.be/" + videoId + "&format=mp3&audioBitrate=128&videoQuality=720&filenameStyle=pretty&vCodec=h264";
-            
             java.net.http.HttpRequest convertReq = java.net.http.HttpRequest.newBuilder()
                 .uri(new java.net.URI("https://cnv.cx/v2/converter"))
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
