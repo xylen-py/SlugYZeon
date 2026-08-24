@@ -152,24 +152,14 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             
             client.send(req, HttpResponse.BodyHandlers.ofFile(tempFile));
 
-            try (java.io.InputStream stream = new java.io.BufferedInputStream(new java.io.FileInputStream(tempFile.toFile()))) {
-                MediaContainerDetectionResult result = new MediaContainerDetection(
-                        MediaContainerRegistry.DEFAULT_REGISTRY,
-                        new AudioReference(tempFile.toUri().toString(), null),
-                        stream,
-                        MediaContainerHints.from(null, null)
-                ).detectContainer();
+            com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager localSm = new com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager();
+            AudioPlayerManager manager = sourceManager.getAudioPlayerManager().apply(null);
+            AudioItem item = localSm.loadItem(manager, new AudioReference(tempFile.toAbsolutePath().toString(), null));
 
-                if (result == null || !result.isContainerDetected() || result.isReference()) {
-                    throw new FriendlyException(
-                            "Could not detect audio format from temp file",
-                            FriendlyException.Severity.SUSPICIOUS, null);
-                }
-
-                InternalAudioTrack internalTrack = (InternalAudioTrack) result.getContainerDescriptor()
-                        .createTrack(trackInfo, stream);
-
-                processDelegate(internalTrack, executor);
+            if (item instanceof InternalAudioTrack) {
+                processDelegate((InternalAudioTrack) item, executor);
+            } else {
+                throw new FriendlyException("Could not load local temp file", FriendlyException.Severity.SUSPICIOUS, null);
             }
         } finally {
             try {
