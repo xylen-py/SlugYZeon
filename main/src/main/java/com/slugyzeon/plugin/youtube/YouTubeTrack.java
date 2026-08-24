@@ -152,7 +152,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             
             client.send(req, HttpResponse.BodyHandlers.ofFile(tempFile));
 
-            try (com.sedmelluq.discord.lavaplayer.tools.io.SeekableFileInputStream stream = new com.sedmelluq.discord.lavaplayer.tools.io.SeekableFileInputStream(tempFile.toFile())) {
+            try (java.io.InputStream stream = new java.io.BufferedInputStream(new java.io.FileInputStream(tempFile.toFile()))) {
                 MediaContainerDetectionResult result = new MediaContainerDetection(
                         MediaContainerRegistry.DEFAULT_REGISTRY,
                         new AudioReference(tempFile.toUri().toString(), null),
