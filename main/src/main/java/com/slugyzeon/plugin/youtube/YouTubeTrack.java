@@ -51,29 +51,25 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
     @Override
     public void process(LocalAudioTrackExecutor executor) throws Exception {
-        if (YouTubeSourceManager.BYPASS_MASTER_KEY.equals(sourceManager.getMasterKey())) {
-            var directUrl = tryY2mateApi(videoId);
-            if (directUrl != null) {
-                try {
-                    log.info("Playing track {} via SlugYZeon-YTCDN [Bypass Mode]", videoId);
-                    playCdnStreamFromUrl(directUrl, executor);
-                    return;
-                } catch (Exception ignored) {
-                }
-            }
-        } else {
-            String streamUrl = cdnStreamUrl;
-            if (streamUrl == null && originalTrack != null) {
-                streamUrl = sourceManager.checkCdnStreamUrl(videoId);
-            }
+        String streamUrl = cdnStreamUrl;
+        if (streamUrl == null && originalTrack != null) {
+            streamUrl = sourceManager.checkCdnStreamUrl(videoId);
+        }
 
-            if (streamUrl != null) {
-                try {
-                    log.info("Playing track {} via SlugYZeon-YTCDN", videoId);
-                    playCdnStreamFromUrl(streamUrl, executor);
-                    return;
-                } catch (Exception ignored) {
-                }
+        if (streamUrl != null) {
+            try {
+                playCdnStreamFromUrl(streamUrl, executor, false);
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+
+        var directUrl = tryY2mateApi(videoId);
+        if (directUrl != null) {
+            try {
+                playCdnStreamFromUrl(directUrl, executor, true);
+                return;
+            } catch (Exception ignored) {
             }
         }
 
@@ -95,8 +91,8 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         }
 
         if (fallback != null) {
-            if (!trackInfo.isStream && trackInfo.length <= 720000L) {
-                triggerBackgroundUpload();
+            if (!trackInfo.isStream && trackInfo.length <= 720000L && directUrl != null) {
+                triggerBackgroundUpload(directUrl);
             }
             processDelegate(fallback, executor);
             return;
@@ -108,7 +104,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 new RuntimeException("Video " + videoId));
     }
 
-    private void playCdnStreamFromUrl(String streamUrl, LocalAudioTrackExecutor executor) throws Exception {
+    private void playCdnStreamFromUrl(String streamUrl, LocalAudioTrackExecutor executor, boolean isBypass) throws Exception {
         try (HttpInterface httpInterface = sourceManager.getHttpSourceManager().getHttpInterface()) {
             try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), Long.MAX_VALUE)) {
                 int statusCode = stream.checkStatusCode();
@@ -134,6 +130,11 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 InternalAudioTrack internalTrack = (InternalAudioTrack) result.getContainerDescriptor()
                     .createTrack(trackInfo, stream);
 
+                if (isBypass) {
+                    log.info("Playing track {} via SlugYZeon-YTCDN [Bypass Mode]", videoId);
+                } else {
+                    log.info("Playing track {} via SlugYZeon-YTCDN", videoId);
+                }
                 processDelegate(internalTrack, executor);
             }
         }
@@ -149,17 +150,14 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         return new YouTubeTrack(trackInfo, videoId, originalTrack, sourceManager, cdnStreamUrl);
     }
 
-    private void triggerBackgroundUpload() {
+    private void triggerBackgroundUpload(String audioUrl) {
         CompletableFuture.runAsync(() -> {
             try {
-                var audioUrl = tryY2mateApi(videoId);
-                if (audioUrl == null) {
-                    return;
-                }
 
                 var client = sourceManager.getHttpClient();
                 var request = HttpRequest.newBuilder().uri(new URI(audioUrl))
                         .header("User-Agent", UA)
+                        .timeout(java.time.Duration.ofMinutes(5))
                         .GET().build();
                 var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
 
@@ -185,25 +183,26 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                         .append("Content-Type: ").append(contentType).append("\r\n\r\n")
                         .toString();
 
-                    var out = new java.io.ByteArrayOutputStream();
-                    out.write(bodyStart.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    var bodyEnd = "\r\n--" + boundary + "--\r\n";
+                    var startStream = new java.io.ByteArrayInputStream(bodyStart.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    var endStream = new java.io.ByteArrayInputStream(bodyEnd.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
                     try (var in = response.body()) {
-                        in.transferTo(out);
-                    }
+                        var streamSupplier = (java.util.function.Supplier<java.io.InputStream>) () -> new java.io.SequenceInputStream(
+                            new java.io.SequenceInputStream(startStream, in), endStream
+                        );
 
-                    out.write(("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        var uploadReq = HttpRequest.newBuilder()
+                            .uri(new URI(sourceManager.getApiUrl() + "/api/v1/upload/" + videoId))
+                            .header("Authorization", "Bearer " + sourceManager.getMasterKey())
+                            .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                            .POST(HttpRequest.BodyPublishers.ofInputStream(streamSupplier))
+                            .build();
 
-                    var uploadReq = HttpRequest.newBuilder()
-                        .uri(new URI(sourceManager.getApiUrl() + "/api/v1/upload/" + videoId))
-                        .header("Authorization", "Bearer " + sourceManager.getMasterKey())
-                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                        .POST(HttpRequest.BodyPublishers.ofByteArray(out.toByteArray()))
-                        .build();
-
-                    var uploadRes = client.send(uploadReq, HttpResponse.BodyHandlers.ofString());
-                    if (uploadRes.statusCode() == 200) {
-                        log.info("Successfully uploaded {} to CDN", videoId);
+                        var uploadRes = client.send(uploadReq, HttpResponse.BodyHandlers.ofString());
+                        if (uploadRes.statusCode() == 200) {
+                            log.info("Successfully uploaded {} to CDN", videoId);
+                        }
                     }
                 }
             } catch (Exception ignored) {
@@ -226,8 +225,9 @@ public class YouTubeTrack extends DelegatedAudioTrack {
             java.net.http.HttpResponse<String> keyRes = client.send(keyReq, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (keyRes.statusCode() != 200) return null;
             
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String key = null;
-            com.fasterxml.jackson.databind.JsonNode json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(keyRes.body());
+            com.fasterxml.jackson.databind.JsonNode json = mapper.readTree(keyRes.body());
             if (json.has("key")) {
                 key = json.path("key").asText();
             }
@@ -248,7 +248,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 
             java.net.http.HttpResponse<String> convertRes = client.send(convertReq, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (convertRes.statusCode() == 200) {
-                com.fasterxml.jackson.databind.JsonNode convJson = new com.fasterxml.jackson.databind.ObjectMapper().readTree(convertRes.body());
+                com.fasterxml.jackson.databind.JsonNode convJson = mapper.readTree(convertRes.body());
                 if (convJson.has("url")) {
                     return convJson.path("url").asText();
                 }

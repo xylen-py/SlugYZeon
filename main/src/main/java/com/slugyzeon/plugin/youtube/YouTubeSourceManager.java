@@ -18,10 +18,11 @@ import org.slf4j.LoggerFactory;
 public class YouTubeSourceManager implements AudioSourceManager {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeSourceManager.class);
-    public static final String BYPASS_MASTER_KEY = "slugyzeongotnolimits";
     private final Function<Void, AudioPlayerManager> audioPlayerManager;
     private final String apiUrl;
     private final String masterKey;
+    private volatile long cdnCircuitBreakerUntil = 0;
+    private final java.util.concurrent.atomic.AtomicInteger cdnFailures = new java.util.concurrent.atomic.AtomicInteger(0);
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
     private final java.util.concurrent.ExecutorService networkExecutor = java.util.concurrent.Executors.newFixedThreadPool(10);
@@ -172,7 +173,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
     }
 
     AudioTrack checkCdnForTrack(String videoId) {
-        if (BYPASS_MASTER_KEY.equals(masterKey)) return null;
+        if (System.currentTimeMillis() < cdnCircuitBreakerUntil) return null;
         try {
             var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
@@ -182,45 +183,52 @@ public class YouTubeSourceManager implements AudioSourceManager {
             var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
                 
             if (res.statusCode() == 200 && res.body() != null) {
+                cdnFailures.set(0);
                 var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
-                String title = json.path("title").asText("Unknown");
-                String author = json.path("author").asText("Unknown");
+                String title = json.path("title").asText("");
+                String author = json.path("author").asText("");
+                try {
+                    var oReq = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"))
+                        .timeout(java.time.Duration.ofSeconds(2))
+                        .GET().build();
+                    var oRes = httpClient.send(oReq, java.net.http.HttpResponse.BodyHandlers.ofString());
+                    if (oRes.statusCode() == 200) {
+                        var oJson = new com.fasterxml.jackson.databind.ObjectMapper().readTree(oRes.body());
+                        if (oJson.has("title")) title = oJson.path("title").asText(title);
+                        if (oJson.has("author_name")) author = oJson.path("author_name").asText(author);
+                    }
+                } catch (Exception ignored) {
+                }
                 long length = json.path("length").asLong(Long.MAX_VALUE);
-                String thumb = resolveYouTubeThumbnail(videoId);
+                String maxRes = "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
+                String thumb = "https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg";
+                try {
+                    var headReq = java.net.http.HttpRequest.newBuilder()
+                        .uri(java.net.URI.create(maxRes))
+                        .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
+                        .timeout(java.time.Duration.ofSeconds(2))
+                        .build();
+                    if (httpClient.send(headReq, java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode() == 200) {
+                        thumb = maxRes;
+                    }
+                } catch (Exception ignored) {
+                }
+
                 String streamUrl = apiUrl + "/api/v1/stream/" + videoId;
-                
-                AudioTrackInfo info = new AudioTrackInfo(
-                    title, author, length, videoId,
-                    false, streamUrl, thumb, null);
-                
+                AudioTrackInfo info = new AudioTrackInfo(title, author, length, videoId, false, streamUrl, thumb, null);                
                 return new YouTubeTrack(info, videoId, null, this, streamUrl);
             }
-        } catch (Exception e) {
-            log.error("Failed to fetch metadata from CDN for {}", videoId, e);
+        } catch (Exception ignored) {
+            if (cdnFailures.incrementAndGet() >= 3) {
+                cdnCircuitBreakerUntil = System.currentTimeMillis() + 300_000;
+            }
         }
         return null;
     }
 
-    private String resolveYouTubeThumbnail(String videoId) {
-        String maxRes = "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
-        try {
-            var headReq = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create(maxRes))
-                .method("HEAD", java.net.http.HttpRequest.BodyPublishers.noBody())
-                .timeout(java.time.Duration.ofSeconds(2))
-                .build();
-            var headRes = httpClient.send(headReq, java.net.http.HttpResponse.BodyHandlers.discarding());
-            
-            if (headRes.statusCode() == 200) {
-                return maxRes;
-            }
-        } catch (Exception ignored) {
-        }
-        return "https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg";
-    }
-
     String checkCdnStreamUrl(String videoId) {
-        if (BYPASS_MASTER_KEY.equals(masterKey)) return null;
+        if (System.currentTimeMillis() < cdnCircuitBreakerUntil) return null;
         try {
             var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
@@ -229,9 +237,13 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 .GET().build();
             var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 200 && res.body() != null) {
+                cdnFailures.set(0);
                 return apiUrl + "/api/v1/stream/" + videoId;
             }
         } catch (Exception ignored) {
+            if (cdnFailures.incrementAndGet() >= 3) {
+                cdnCircuitBreakerUntil = System.currentTimeMillis() + 300_000;
+            }
         }
         return null;
     }
@@ -239,11 +251,14 @@ public class YouTubeSourceManager implements AudioSourceManager {
     static String extractVideoId(String url) {
         if (url == null || (url = url.trim()).isEmpty()) return null;
         if (url.contains("list=")) return null;
-        if (url.length() == 11 && !url.matches(".*[/.#?&].*")) return url;
-        var m = java.util.regex.Pattern.compile("(?:v=|youtu\\.be/|/embed/|/v/)([^&#?/]+)").matcher(url);
+        if (url.length() == 11 && url.matches("^[a-zA-Z0-9_-]{11}$")) return url;
+
+        var m = java.util.regex.Pattern.compile(
+            "(?i)(?:youtu\\.be/|v/|vi/|embed/|shorts/|live/|e/|\\?v=|&v=|\\?vi=|&vi=)([a-zA-Z0-9_-]{11})"
+        ).matcher(url);
+
         if (m.find()) {
-            String id = m.group(1);
-            return id.length() >= 11 ? id.substring(0, 11) : id;
+            return m.group(1);
         }
         return null;
     }

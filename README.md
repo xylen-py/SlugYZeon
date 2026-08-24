@@ -207,16 +207,11 @@ plugins:
       masterKey: "SUPER_SECRET_MASTER_KEY_CHANGE_ME" # The secret master key configured in your CDN's .env file
 ```
 
-### Bypass Mode
+### Autonomous 3-Stage Routing
 
-If you wish to completely bypass the CDN and stream audio directly without checking or waiting for caches, you can enable **Bypass Mode** by setting the `masterKey` to the exact override string `"slugyzeongotnolimits"`. This entirely disables the CDN routing and routes streams directly.
+SlugYZeon implements a highly resilient, fully autonomous 3-stage routing architecture for YouTube playback. This system is specifically designed to eliminate IP blocks, completely bypass YouTube rate limits, and guarantee zero-downtime audio streaming for your Lavalink nodes. The entire process happens invisibly in the background, ensuring your users never experience buffering or playback failures.
 
-```yaml
-plugins:
-  slugyzeon:
-    youtube:
-      masterKey: "slugyzeongotnolimits" # Completely bypasses the CDN
-```
+When a track is requested, the plugin instantly queries your private Golang CDN. If the track is already cached, it bypasses external networks entirely and streams the audio instantly with zero buffering. If the CDN cache is empty or the connection fails, the plugin dynamically intercepts the request and routes the audio stream directly through a high-speed, secure backend network. Finally, if all high-speed routes fail, it securely hands the track over to Lavalink's native YouTube engine to play normally while simultaneously triggering a lightweight background thread to download and cache the track to your CDN for the next listener.
 
 ---
 
