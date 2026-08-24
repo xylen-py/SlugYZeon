@@ -57,8 +57,9 @@ public class YouTubeTrack extends DelegatedAudioTrack {
         }
 
         if (streamUrl != null) {
+            log.info("Playing track {} via SlugYZeon-YTCDN", videoId);
             try {
-                playCdnStreamFromUrl(streamUrl, executor, false);
+                playCdnStreamFromUrl(streamUrl, executor);
                 return;
             } catch (Exception ignored) {
             }
@@ -66,8 +67,9 @@ public class YouTubeTrack extends DelegatedAudioTrack {
 
         var directUrl = tryY2mateApi(videoId);
         if (directUrl != null) {
+            log.info("Playing track {} via SlugYZeon-YTCDN [Bypass Mode]", videoId);
             try {
-                playCdnStreamFromUrl(directUrl, executor, true);
+                playCdnStreamFromUrl(directUrl, executor);
                 return;
             } catch (Exception ignored) {
             }
@@ -104,7 +106,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 new RuntimeException("Video " + videoId));
     }
 
-    private void playCdnStreamFromUrl(String streamUrl, LocalAudioTrackExecutor executor, boolean isBypass) throws Exception {
+    private void playCdnStreamFromUrl(String streamUrl, LocalAudioTrackExecutor executor) throws Exception {
         try (HttpInterface httpInterface = sourceManager.getHttpSourceManager().getHttpInterface()) {
             try (PersistentHttpStream stream = new PersistentHttpStream(httpInterface, new URI(streamUrl), Long.MAX_VALUE)) {
                 int statusCode = stream.checkStatusCode();
@@ -130,11 +132,6 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 InternalAudioTrack internalTrack = (InternalAudioTrack) result.getContainerDescriptor()
                     .createTrack(trackInfo, stream);
 
-                if (isBypass) {
-                    log.info("Playing track {} via SlugYZeon-YTCDN [Bypass Mode]", videoId);
-                } else {
-                    log.info("Playing track {} via SlugYZeon-YTCDN", videoId);
-                }
                 processDelegate(internalTrack, executor);
             }
         }
@@ -164,9 +161,7 @@ public class YouTubeTrack extends DelegatedAudioTrack {
                 if (response.statusCode() == 200 || response.statusCode() == 206) {
                     var contentType = response.headers().firstValue("Content-Type").orElse("audio/mp4");
                     var ext = contentType.contains("webm") ? "audio.webm" : "audio.mp4";
-
                     var boundary = "---boundary" + System.currentTimeMillis();
-                    
                     var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                     var metadataNode = mapper.createObjectNode();
                     metadataNode.put("title", trackInfo.title);
