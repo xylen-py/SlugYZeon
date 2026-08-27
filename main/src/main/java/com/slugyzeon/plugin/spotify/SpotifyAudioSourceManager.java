@@ -36,13 +36,13 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     public static final long PREVIEW_LENGTH = 30000;
     public static final String SHARE_URL = "https://spotify.link/";
     public static final String GQL_BASE = "https://api-partner.spotify.com/pathfinder/v2/query";
-    public static final String API_BASE = "https://api.spotify.com/v1/";
 
     private static final String SEARCH_HASH = "4801118d4a100f756e833d33984436a3899cff359c532f8fd3aaf174b60b3b49";
     private static final String TRACK_HASH = "612585ae06ba435ad26369870deaae23b5c8800a256cd8a57e08eddc25a37294";
     private static final String ALBUM_HASH = "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10";
     private static final String PLAYLIST_HASH = "7982b11e21535cd2594badc40030b745671b61a1fa66766e569d45e6364f3422";
     private static final String ARTIST_HASH = "dd14c6043d8127b56c5acbe534f6b3c58714f0c26bc6ad41776079ed52833a8f";
+    private static final String RECOMMENDATIONS_HASH = "c77098ee9d6ee8ad3eb844938722db60570d040b49f41f5ec6e7be9160a7c86b";
     private static final String HASHES_URL = "https://gist.githubusercontent.com/saraansx/c50367808cbbf6ea7352920e4b556ac3/raw/0c262af0e0cebba07d738848512463a69752118f/spotify_hashes.json";
 
     private volatile String searchHash = SEARCH_HASH;
@@ -50,8 +50,15 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     private volatile String albumHash = ALBUM_HASH;
     private volatile String playlistHash = PLAYLIST_HASH;
     private volatile String artistHash = ARTIST_HASH;
+    private volatile String recommendationsHash = RECOMMENDATIONS_HASH;
     private volatile boolean hashesLoaded = false;
-    private final java.util.Map<String, String> isrcCache = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<String, String> isrcCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<String, String>(50000, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, String> eldest) {
+                    return size() > 50000;
+                }
+            });
 
     public static final Pattern URL_PATTERN = Pattern.compile(
             "(https?://)(www\\.)?open\\.spotify\\.com/(?:(?<region>[a-zA-Z-]+)/)?(?:user/(?<user>[a-zA-Z0-9-_]+)/)?(?<type>track|album|playlist|artist)/(?<identifier>[a-zA-Z0-9-_]+)");
@@ -231,19 +238,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return tokenTracker.getAnonymousAccessToken();
     }
 
-    private JsonNode gqlQuery(String operationName, String hash, ObjectNode variables) throws IOException {
-        ObjectNode body = mapper.createObjectNode();
-        body.set("variables", variables);
-        body.put("operationName", operationName);
-
-        ObjectNode extensions = mapper.createObjectNode();
-        ObjectNode persistedQuery = mapper.createObjectNode();
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", hash);
-        extensions.set("persistedQuery", persistedQuery);
-        body.set("extensions", extensions);
-
-        String jsonBody = mapper.writeValueAsString(body);
+    private JsonNode gqlQuery(SpotifyRequestPayload payload) throws IOException {
+        String jsonBody = payload.serialize();
 
         try {
             String token = getToken();
@@ -262,7 +258,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 401) {
-                    log.debug("GQL 401, refreshing token ({}/3)", attempt + 1);
+                    log.debug("GQL 401, refreshing token");
                     token = tokenTracker.getAnonymousAccessToken();
                     continue;
                 }
@@ -271,20 +267,20 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                     long retryAfter = response.headers()
                             .firstValueAsLong("Retry-After")
                             .orElse(2L + attempt);
-                    log.debug("GQL rate limited, retrying in {}s ({}/3)", retryAfter, attempt + 1);
+                    log.debug("GQL rate limited, retrying in {}s", retryAfter);
                     Thread.sleep(retryAfter * 1000L);
                     continue;
                 }
 
                 if (response.statusCode() != 200) {
-                    log.warn("GQL returned {} for {}", response.statusCode(), operationName);
+                    log.warn("GQL returned {} for {}", response.statusCode(), payload.getOperationName());
                     return null;
                 }
 
                 JsonNode json = mapper.readTree(response.body());
 
                 if (json.has("errors") && json.get("errors").size() > 0) {
-                    log.warn("GQL error for {}: {}", operationName,
+                    log.warn("GQL error for {}: {}", payload.getOperationName(),
                             json.get("errors").get(0).path("message").asText("unknown"));
                     return null;
                 }
@@ -295,28 +291,6 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted during GQL call", e);
-        }
-    }
-
-    private JsonNode getRestJson(String url) throws IOException {
-        try {
-            String token = getToken();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + token)
-                    .header("User-Agent", USER_AGENT)
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                return null;
-            }
-            return mapper.readTree(response.body());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted", e);
         }
     }
 
@@ -405,30 +379,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         return isrcMap;
     }
 
-    private static String base62ToHex(String id) {
-        try {
-            String chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-            java.math.BigInteger n = java.math.BigInteger.ZERO;
-            for (int i = 0; i < id.length(); i++) {
-                int idx = chars.indexOf(id.charAt(i));
-                if (idx < 0)
-                    return null;
-                n = n.multiply(java.math.BigInteger.valueOf(62)).add(java.math.BigInteger.valueOf(idx));
-            }
-            String hex = n.toString(16);
-            while (hex.length() < 32)
-                hex = "0" + hex;
-            return hex;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
     public AudioItem getTrack(String id, boolean preview) throws IOException {
-        ObjectNode vars = mapper.createObjectNode();
-        vars.put("uri", "spotify:track:" + id);
-
-        JsonNode data = gqlQuery("getTrack", trackHash, vars);
+        JsonNode data = gqlQuery(SpotifyRequestPayload.track(trackHash, id));
         if (data == null)
             return AudioReference.NO_TRACK;
 
@@ -445,18 +397,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getSearch(String query, boolean preview) throws IOException {
-        ObjectNode vars = mapper.createObjectNode();
-        vars.put("searchTerm", query);
-        vars.put("offset", 0);
-        vars.put("limit", 20);
-        vars.put("numberOfTopResults", 5);
-        vars.put("includeAudiobooks", false);
-        vars.put("includeArtistHasConcertsField", false);
-        vars.put("includePreReleases", false);
-        vars.put("includeLocalConcertsField", false);
-        vars.put("includeAuthors", false);
-
-        JsonNode data = gqlQuery("searchDesktop", searchHash, vars);
+        JsonNode data = gqlQuery(SpotifyRequestPayload.search(searchHash, query));
         if (data == null)
             return AudioReference.NO_TRACK;
 
@@ -494,6 +435,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getRecommendations(String query, boolean preview) throws IOException {
+        String seedTrackId = null;
+
         Matcher mixMatcher = RADIO_MIX_QUERY_PATTERN.matcher(query);
         if (mixMatcher.find()) {
             String seedType = mixMatcher.group("seedType");
@@ -513,38 +456,63 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                     }
                 }
             }
-            query = "seed_" + seedType + "s=" + seed;
+
+            if ("track".equals(seedType)) {
+                seedTrackId = seed;
+            }
+        } else {
+            seedTrackId = query;
         }
 
-        JsonNode json = getRestJson(API_BASE + "recommendations?" + query);
-        if (json == null)
-            return AudioReference.NO_TRACK;
+        if (seedTrackId != null) {
+            AudioItem gqlResult = getGqlRecommendations(seedTrackId, preview);
+            if (gqlResult != null)
+                return gqlResult;
+        }
 
-        JsonNode tracksArray = json.get("tracks");
-        if (tracksArray == null || !tracksArray.isArray() || tracksArray.size() == 0)
-            return AudioReference.NO_TRACK;
+        return AudioReference.NO_TRACK;
+    }
+
+    private AudioItem getGqlRecommendations(String seedTrackId, boolean preview) throws IOException {
+        JsonNode data = gqlQuery(SpotifyRequestPayload.recommendations(recommendationsHash, seedTrackId));
+        if (data == null)
+            return null;
+
+        JsonNode items = data.path("internalLinkRecommenderTrack").path("items");
+        if (!items.isArray() || items.size() == 0) {
+            items = data.path("seoRecommendedTrack").path("items");
+        }
+        if (!items.isArray() || items.size() == 0)
+            return null;
+
+        List<String> collectedIds = new ArrayList<>();
+        for (JsonNode item : items) {
+            JsonNode trackData = item.path("data");
+            if (trackData.isMissingNode()) trackData = item;
+            String tid = extractIdFromUri(trackData.path("uri").asText(""));
+            if (!tid.isEmpty()) collectedIds.add(tid);
+        }
+
+        java.util.Map<String, String> isrcMap = fetchIsrcMap(collectedIds);
 
         List<AudioTrack> tracks = new ArrayList<>();
-        for (JsonNode trackNode : tracksArray) {
-            AudioTrack track = parseRestTrack(trackNode, preview);
-            if (track != null)
-                tracks.add(track);
+        for (JsonNode item : items) {
+            JsonNode trackData = item.path("data");
+            if (trackData.isMissingNode()) trackData = item;
+            String trackId = extractIdFromUri(trackData.path("uri").asText(""));
+            if (trackId.isEmpty()) continue;
+            AudioTrack track = parseGqlTrackWithIsrc(trackData, trackId, preview, isrcMap.get(trackId));
+            if (track != null) tracks.add(track);
         }
 
         if (tracks.isEmpty())
-            return AudioReference.NO_TRACK;
+            return null;
         return new SpotifyAudioPlaylist("Spotify Recommendations", tracks,
                 ExtendedAudioPlaylist.Type.RECOMMENDATIONS, null, null, null, tracks.size());
     }
 
     public AudioItem getAlbum(String id, boolean preview) throws IOException {
-        ObjectNode vars = mapper.createObjectNode();
-        vars.put("uri", "spotify:album:" + id);
-        vars.put("locale", "en");
-        vars.put("offset", 0);
-        vars.put("limit", 300);
-
-        JsonNode data = gqlQuery("getAlbum", albumHash, vars);
+        JsonNode data = gqlQuery(SpotifyRequestPayload.album(albumHash, id));
         if (data == null)
             return AudioReference.NO_TRACK;
 
@@ -559,10 +527,10 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String albumName = album.path("name").asText("Unknown Album");
         String albumId = extractIdFromUri(album.path("uri").asText(""));
         String albumUrl = "https://open.spotify.com/album/" + albumId;
-        String albumArtwork = album.path("coverArt").path("sources").path(0).path("url").asText(null);
+        String albumArtwork = getBestImage(album.path("coverArt").path("sources"));
         String albumArtist = getGqlArtistName(album);
-        String artistArtwork = album.path("artists").path("items").path(0)
-                .path("visuals").path("avatarImage").path("sources").path(0).path("url").asText(null);
+        String artistArtwork = getBestImage(album.path("artists").path("items").path(0)
+                .path("visuals").path("avatarImage").path("sources"));
 
         int totalTracks = album.path("tracks").path("totalCount").asInt(0);
 
@@ -639,13 +607,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getPlaylist(String id, boolean preview) throws IOException {
-        ObjectNode vars = mapper.createObjectNode();
-        vars.put("uri", "spotify:playlist:" + id);
-        vars.put("offset", 0);
-        vars.put("limit", 343);
-        vars.put("enableWatchFeedEntrypoint", false);
-
-        JsonNode data = gqlQuery("fetchPlaylist", playlistHash, vars);
+        JsonNode data = gqlQuery(SpotifyRequestPayload.playlist(playlistHash, id, 0, 343));
         if (data == null)
             return AudioReference.NO_TRACK;
 
@@ -655,8 +617,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
         String playlistName = playlist.path("name").asText("Unknown Playlist");
         String playlistUrl = "https://open.spotify.com/playlist/" + id;
-        String playlistArtwork = playlist.path("images").path("items").path(0)
-                .path("sources").path(0).path("url").asText(null);
+        String playlistArtwork = getBestImage(playlist.path("images").path("items").path(0)
+                .path("sources"));
         String owner = playlist.path("ownerV2").path("data").path("name").asText("Unknown");
         int totalTracks = playlist.path("content").path("totalCount").asInt(0);
 
@@ -676,12 +638,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 final int offset = i * 343;
                 pageFutures[i - 1] = java.util.concurrent.CompletableFuture.runAsync(() -> {
                     try {
-                        ObjectNode pageVars = mapper.createObjectNode();
-                        pageVars.put("uri", "spotify:playlist:" + id);
-                        pageVars.put("offset", offset);
-                        pageVars.put("limit", 343);
-                        pageVars.put("enableWatchFeedEntrypoint", false);
-                        JsonNode pageData = gqlQuery("fetchPlaylist", playlistHash, pageVars);
+                        JsonNode pageData = gqlQuery(SpotifyRequestPayload.playlist(playlistHash, id, offset, 343));
                         if (pageData != null) {
                             JsonNode pageItems = pageData.path("playlistV2").path("content").path("items");
                             if (pageItems.isArray()) {
@@ -740,12 +697,7 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
     }
 
     public AudioItem getArtist(String id, boolean preview) throws IOException {
-        ObjectNode vars = mapper.createObjectNode();
-        vars.put("uri", "spotify:artist:" + id);
-        vars.put("locale", "en");
-        vars.put("includePrerelease", false);
-
-        JsonNode data = gqlQuery("queryArtistOverview", artistHash, vars);
+        JsonNode data = gqlQuery(SpotifyRequestPayload.artist(artistHash, id));
         if (data == null)
             return AudioReference.NO_TRACK;
 
@@ -759,8 +711,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
         String artistName = artist.path("profile").path("name").asText("Unknown Artist");
         String artistUrl = "https://open.spotify.com/artist/" + id;
-        String artistArtwork = artist.path("visuals").path("avatarImage")
-                .path("sources").path(0).path("url").asText(null);
+        String artistArtwork = getBestImage(artist.path("visuals").path("avatarImage")
+                .path("sources"));
 
         JsonNode topTracks = artist.path("discography").path("topTracks").path("items");
         if (!topTracks.isArray() || topTracks.size() == 0) {
@@ -802,8 +754,8 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
 
                 long duration = getGqlDuration(trackData);
                 String trackUrl = "https://open.spotify.com/track/" + trackId;
-                String trackArtwork = trackData.path("albumOfTrack").path("coverArt")
-                        .path("sources").path(0).path("url").asText(null);
+                String trackArtwork = getBestImage(trackData.path("albumOfTrack").path("coverArt")
+                        .path("sources"));
                 String albumName = trackData.path("albumOfTrack").path("name").asText(null);
                 String albumId = extractIdFromUri(trackData.path("albumOfTrack").path("uri").asText(""));
                 String albumUrl = albumId.isEmpty() ? null : "https://open.spotify.com/album/" + albumId;
@@ -846,13 +798,13 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
         String artistUrl = artistUri != null
                 ? "https://open.spotify.com/artist/" + extractIdFromUri(artistUri)
                 : null;
-        String artistArtwork = trackData.path("artists").path("items").path(0)
-                .path("visuals").path("avatarImage").path("sources").path(0).path("url").asText(null);
+        String artistArtwork = getBestImage(trackData.path("artists").path("items").path(0)
+                .path("visuals").path("avatarImage").path("sources"));
 
         String trackUrl = "https://open.spotify.com/track/" + trackId;
 
-        String artworkUrl = trackData.path("albumOfTrack").path("coverArt")
-                .path("sources").path(0).path("url").asText(null);
+        String artworkUrl = getBestImage(trackData.path("albumOfTrack").path("coverArt")
+                .path("sources"));
         String albumName = trackData.path("albumOfTrack").path("name").asText(null);
         String albumUri = trackData.path("albumOfTrack").path("uri").asText(null);
         String albumUrl = albumUri != null
@@ -880,90 +832,63 @@ public class SpotifyAudioSourceManager extends MirroringAudioSourceManager {
                 null, preview, this);
     }
 
-    private AudioTrack parseRestTrack(JsonNode json, boolean preview) {
-        if (json == null || json.isNull())
+    private static String base62ToHex(String id) {
+        try {
+            String chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            java.math.BigInteger n = java.math.BigInteger.ZERO;
+            for (int i = 0; i < id.length(); i++) {
+                int idx = chars.indexOf(id.charAt(i));
+                if (idx < 0) return null;
+                n = n.multiply(java.math.BigInteger.valueOf(62)).add(java.math.BigInteger.valueOf(idx));
+            }
+            String hex = n.toString(16);
+            while (hex.length() < 32) hex = "0" + hex;
+            return hex;
+        } catch (Exception e) {
             return null;
-
-        String title = json.path("name").asText("");
-        if (title.isEmpty())
-            return null;
-
-        String artist = json.path("artists").path(0).path("name").asText("Unknown");
-        long duration = preview ? PREVIEW_LENGTH : json.path("duration_ms").asLong(0);
-        String trackId = json.path("id").asText("local");
-        String trackUrl = json.path("external_urls").path("spotify").asText(null);
-        String artworkUrl = json.path("album").path("images").path(0).path("url").asText(null);
-        String albumName = json.path("album").path("name").asText(null);
-        String albumUrl = json.path("album").path("external_urls").path("spotify").asText(null);
-        String artistUrl = json.path("artists").path(0).path("external_urls").path("spotify").asText(null);
-        String previewUrl = json.path("preview_url").asText(null);
-        String isrc = json.path("external_ids").path("isrc").asText(null);
-
-        AudioTrackInfo trackInfo = new AudioTrackInfo(
-                title,
-                artist,
-                duration,
-                trackId,
-                false,
-                trackUrl,
-                artworkUrl,
-                isrc);
-
-        return new SpotifyAudioTrack(trackInfo, albumName, albumUrl, artistUrl, null, previewUrl, preview, this);
+        }
     }
 
     private String getGqlArtistName(JsonNode node) {
-        if (node == null || node.isMissingNode())
-            return "Unknown";
-
-        String name = node.path("artists").path("items").path(0).path("profile").path("name").asText(null);
-        if (name != null && !name.isEmpty())
-            return name;
-
-        name = node.path("artists").path("items").path(0).path("name").asText(null);
-        if (name != null && !name.isEmpty())
-            return name;
-
-        name = node.path("firstArtist").path("items").path(0).path("profile").path("name").asText(null);
-        if (name != null && !name.isEmpty())
-            return name;
-
-        name = node.path("artists").path(0).path("profile").path("name").asText(null);
-        if (name != null && !name.isEmpty())
-            return name;
-
-        name = node.path("artists").path(0).path("name").asText(null);
-        if (name != null && !name.isEmpty())
-            return name;
-
-        return "Unknown";
+        if (node == null || node.isMissingNode()) return "";
+        for (String path : new String[]{
+                node.path("artists").path("items").path(0).path("profile").path("name").asText(null),
+                node.path("artists").path("items").path(0).path("name").asText(null),
+                node.path("firstArtist").path("items").path(0).path("profile").path("name").asText(null),
+                node.path("artists").path(0).path("profile").path("name").asText(null),
+                node.path("artists").path(0).path("name").asText(null)
+        }) {
+            if (path != null && !path.isEmpty()) return path;
+        }
+        return "";
     }
 
     private long getGqlDuration(JsonNode node) {
-        if (node == null || node.isMissingNode())
-            return 0;
-
-        long ms = node.path("duration").path("totalMilliseconds").asLong(0);
-        if (ms > 0)
-            return ms;
-
-        ms = node.path("duration_ms").asLong(0);
-        if (ms > 0)
-            return ms;
-
-        ms = node.path("duration").path("milliseconds").asLong(0);
-        if (ms > 0)
-            return ms;
-
-        ms = node.path("trackDuration").path("totalMilliseconds").asLong(0);
-        if (ms > 0)
-            return ms;
-
-        ms = node.path("duration").asLong(0);
-        if (ms > 0)
-            return ms;
-
+        if (node == null || node.isMissingNode()) return 0;
+        for (long ms : new long[]{
+                node.path("duration").path("totalMilliseconds").asLong(0),
+                node.path("duration_ms").asLong(0),
+                node.path("duration").path("milliseconds").asLong(0),
+                node.path("trackDuration").path("totalMilliseconds").asLong(0),
+                node.path("duration").asLong(0)
+        }) {
+            if (ms > 0) return ms;
+        }
         return 0;
+    }
+
+    private String getBestImage(JsonNode sources) {
+        if (sources == null || !sources.isArray() || sources.size() == 0) return null;
+        JsonNode best = sources.get(0);
+        int bestWidth = best.path("width").asInt(0);
+        for (JsonNode source : sources) {
+            int w = source.path("width").asInt(0);
+            if (w > bestWidth) {
+                bestWidth = w;
+                best = source;
+            }
+        }
+        return best.path("url").asText(null);
     }
 
     private String extractIdFromUri(String uri) {
