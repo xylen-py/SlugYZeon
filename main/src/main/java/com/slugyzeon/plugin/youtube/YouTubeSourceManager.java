@@ -21,12 +21,10 @@ public class YouTubeSourceManager implements AudioSourceManager {
     private final Function<Void, AudioPlayerManager> audioPlayerManager;
     private final String apiUrl;
     private final String masterKey;
-    private volatile long cdnCircuitBreakerUntil = 0;
-    private final java.util.concurrent.atomic.AtomicInteger cdnFailures = new java.util.concurrent.atomic.AtomicInteger(0);
     private AudioSourceManager originalYouTubeSource;
     private boolean attached = false;
     private final java.util.concurrent.ExecutorService networkExecutor = java.util.concurrent.Executors.newFixedThreadPool(10);
-    private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NORMAL).connectTimeout(java.time.Duration.ofSeconds(10)).build();
+    private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.ALWAYS).connectTimeout(java.time.Duration.ofSeconds(10)).build();
     private final com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager httpSourceManager = new com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager();
 
     public com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager getHttpSourceManager() {
@@ -173,7 +171,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
     }
 
     AudioTrack checkCdnForTrack(String videoId) {
-        if (System.currentTimeMillis() < cdnCircuitBreakerUntil) return null;
         try {
             var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
@@ -183,7 +180,6 @@ public class YouTubeSourceManager implements AudioSourceManager {
             var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
                 
             if (res.statusCode() == 200 && res.body() != null) {
-                cdnFailures.set(0);
                 var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(res.body());
                 String title = json.path("title").asText("");
                 String author = json.path("author").asText("");
@@ -200,6 +196,7 @@ public class YouTubeSourceManager implements AudioSourceManager {
                     }
                 } catch (Exception ignored) {
                 }
+                
                 long length = json.path("length").asLong(Long.MAX_VALUE);
                 String maxRes = "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
                 String thumb = "https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg";
@@ -220,15 +217,11 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 return new YouTubeTrack(info, videoId, null, this, streamUrl);
             }
         } catch (Exception ignored) {
-            if (cdnFailures.incrementAndGet() >= 3) {
-                cdnCircuitBreakerUntil = System.currentTimeMillis() + 300_000;
-            }
         }
         return null;
     }
 
     String checkCdnStreamUrl(String videoId) {
-        if (System.currentTimeMillis() < cdnCircuitBreakerUntil) return null;
         try {
             var req = java.net.http.HttpRequest.newBuilder()
                 .uri(java.net.URI.create(apiUrl + "/api/v1/metadata/" + videoId))
@@ -236,14 +229,11 @@ public class YouTubeSourceManager implements AudioSourceManager {
                 .timeout(java.time.Duration.ofSeconds(3))
                 .GET().build();
             var res = httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            
             if (res.statusCode() == 200 && res.body() != null) {
-                cdnFailures.set(0);
                 return apiUrl + "/api/v1/stream/" + videoId;
             }
         } catch (Exception ignored) {
-            if (cdnFailures.incrementAndGet() >= 3) {
-                cdnCircuitBreakerUntil = System.currentTimeMillis() + 300_000;
-            }
         }
         return null;
     }
