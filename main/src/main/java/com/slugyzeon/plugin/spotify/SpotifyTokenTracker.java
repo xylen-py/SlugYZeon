@@ -37,6 +37,7 @@ public class SpotifyTokenTracker {
 
     private volatile String anonymousAccessToken;
     private volatile Instant anonymousExpires;
+    private volatile long clockDriftMs;
 
     private volatile String cachedNuanceSecret;
     private volatile int cachedNuanceVersion;
@@ -79,7 +80,9 @@ public class SpotifyTokenTracker {
         int version = Integer.parseInt(nuance[1]);
 
         long serverTime = fetchServerTime();
-        String totp = generateTOTP(secret, serverTime * 1000L);
+        long serverTimeMs = serverTime * 1000L;
+        this.clockDriftMs = serverTimeMs - System.currentTimeMillis();
+        String totp = generateTOTP(secret, serverTimeMs);
 
         String url = SPOTIFY_TOKEN_URL
                 + "?reason=transport"
@@ -87,7 +90,7 @@ public class SpotifyTokenTracker {
                 + "&totp=" + totp
                 + "&totpServer=" + totp
                 + "&totpVer=" + version
-                + "&ts=" + System.currentTimeMillis();
+                + "&ts=" + serverTimeMs;
 
         fetchTokenFromUrl(url);
     }
@@ -118,10 +121,12 @@ public class SpotifyTokenTracker {
             long expiresMs = json.path("accessTokenExpirationTimestampMs").asLong(0);
             Instant expiry;
             if (expiresMs > 0) {
-                expiry = Instant.ofEpochMilli(expiresMs).minusSeconds(TOKEN_EXPIRY_BUFFER_SECONDS);
-                if (Instant.now().isAfter(expiry)) {
-                    throw new IOException("Token already expired");
+                long adjustedNow = System.currentTimeMillis() + this.clockDriftMs;
+                long remainingMs = expiresMs - adjustedNow;
+                if (remainingMs < TOKEN_EXPIRY_BUFFER_SECONDS * 1000L) {
+                    throw new IOException("Token already expired (remaining " + remainingMs + "ms)");
                 }
+                expiry = Instant.now().plusMillis(remainingMs - (TOKEN_EXPIRY_BUFFER_SECONDS * 1000L));
             } else {
                 long expiresIn = json.path("expires_in").asLong(3600);
                 expiry = Instant.now().plusSeconds(Math.max(expiresIn - TOKEN_EXPIRY_BUFFER_SECONDS, 60));
