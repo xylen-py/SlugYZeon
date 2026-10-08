@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     java
     `maven-publish`
 }
@@ -33,7 +33,8 @@ publishing {
     publications {
         create<MavenPublication>("maven") {
             from(components["java"])
-            artifactId = "slugyzeon-main"
+            artifactId = "solaceaudio-main"
         }
     }
 }
+
